@@ -3,7 +3,6 @@ import streamlit as st
 import dns.resolver
 from datetime import datetime
 import pytz
-from bson.objectid import ObjectId
 import hashlib
 import pandas as pd
 from pymongo import MongoClient
@@ -24,8 +23,12 @@ def _db():
 def hash_password(p):
     return hashlib.sha256(p.encode()).hexdigest()
 
+def clean_nisn(nisn):
+    if pd.isna(nisn): return ""
+    return str(nisn).replace('.0', '').strip()
+
 # ================================================================
-# MANAJEMEN PENGGUNA (GURU & ADMIN)
+# MANAJEMEN PENGGUNA
 # ================================================================
 def load_users():
     users = {}
@@ -55,111 +58,109 @@ def daftar_user_baru(username, nama, password_hashed, role="guru"):
     return True, "Pendaftaran berhasil! Silakan tunggu persetujuan Admin."
 
 # ================================================================
-# MANAJEMEN SISWA (MASTER)
-# ================================================================
-def tambah_siswa_baru(nisn, nama, kelas, nilai):
-    db = _db()
-    nisn_str = str(nisn).strip()
-    db["siswa_master"].update_one(
-        {"NISN": nisn_str},
-        {"$set": {"Nama": str(nama), "Kelas": str(kelas), "Nilai": float(nilai)}},
-        upsert=True
-    )
-    if not db["siswa_akun"].find_one({"NISN": nisn_str}):
-        db["siswa_akun"].insert_one({
-            "NISN": nisn_str, "Password_Hash": hash_password(nisn_str), "sudah_isi_survei": False
-        })
-    return True
-
-def update_nilai_siswa(nisn, data_dict):
-    """Memperbarui data nilai (bisa rata-rata atau per mapel sekaligus)."""
-    db = _db()
-    try:
-        db["siswa_master"].update_one(
-            {"NISN": str(nisn).strip()},
-            {"$set": data_dict}
-        )
-        return True, "Data nilai berhasil diperbarui."
-    except Exception as e:
-        return False, f"Gagal update nilai: {e}"
-
-def get_semua_akun_siswa():
-    db = _db()
-    masters = list(db["siswa_master"].find({}, {"_id": 0}))
-    data = [{"NISN": m["NISN"], "Nama": m["Nama"], "Kelas": m["Kelas"], "Password Default": m["NISN"]} for m in masters]
-    return pd.DataFrame(data)
-
-# ================================================================
-# SURVEI & AKUN SISWA
+# PORTAL SISWA & SURVEI
 # ================================================================
 def login_siswa(nisn, password_plain):
     db = _db()
-    akun = db["siswa_akun"].find_one({"NISN": str(nisn).strip()})
-    if not akun: return False, "NISN tidak terdaftar."
-    if akun["Password_Hash"] != hash_password(password_plain): return False, "Password salah."
-    return True, "Login berhasil"
+    nisn_clean = clean_nisn(nisn)
+    
+    akun = db["siswa_akun"].find_one({"NISN": nisn_clean})
+    if not akun:
+        # AUTO-REGISTER
+        if str(password_plain).strip() != nisn_clean:
+            return False, "NISN belum terdaftar. Untuk mendaftar mandiri, pastikan Password sama dengan NISN Anda."
+            
+        db["siswa_akun"].insert_one({
+            "NISN": nisn_clean, 
+            "Password_Hash": hash_password(nisn_clean), 
+            "sudah_isi_survei": False
+        })
+        return True, "Pendaftaran berhasil! Silakan isi formulir survei."
+    else:
+        if akun["Password_Hash"] != hash_password(password_plain): 
+            return False, "Password salah. Pastikan menggunakan NISN Anda."
+        return True, "Login berhasil"
 
 def simpan_survei_siswa(nisn, profil_konstruk):
     db = _db()
+    nisn_clean = clean_nisn(nisn)
     wib = datetime.now(pytz.timezone("Asia/Jakarta")).isoformat(timespec="seconds")
+    
     db["siswa_survei"].update_one(
-        {"NISN": str(nisn).strip()},
-        {"$set": {**profil_konstruk, "NISN": str(nisn).strip(), "timestamp": wib}},
+        {"NISN": nisn_clean},
+        {"$set": {**profil_konstruk, "NISN": nisn_clean, "timestamp": wib}},
         upsert=True
     )
     db["siswa_akun"].update_one(
-        {"NISN": str(nisn).strip()}, {"$set": {"sudah_isi_survei": True}}
+        {"NISN": nisn_clean}, {"$set": {"sudah_isi_survei": True}}
     )
     return True
 
+def reset_password_siswa(nisn):
+    db = _db()
+    nisn_clean = clean_nisn(nisn)
+    try:
+        db["siswa_akun"].update_one(
+            {"NISN": nisn_clean},
+            {"$set": {"Password_Hash": hash_password(nisn_clean)}}
+        )
+        return True, "Password berhasil direset menjadi NISN."
+    except Exception as e:
+        return False, f"Gagal reset: {e}"
+
+def hapus_survei_siswa(nisn):
+    db = _db()
+    nisn_clean = clean_nisn(nisn)
+    try:
+        db["siswa_akun"].delete_one({"NISN": nisn_clean})
+        db["siswa_survei"].delete_one({"NISN": nisn_clean})
+        return True, "Data survei dan akun siswa berhasil dihapus. NISN dapat digunakan kembali."
+    except Exception as e:
+        return False, f"Gagal menghapus: {e}"
+
 # ================================================================
-# DATA GABUNGAN (KUNCI DASHBOARD)
+# DATA GABUNGAN (DENGAN FITUR SORTING NISN)
 # ================================================================
 def get_data_gabungan():
     db = _db()
-    masters = list(db["siswa_master"].find({}, {"_id": 0}))
-    # Paksa NISN jadi string agar sinkron
-    surveis = {str(s["NISN"]).strip(): s for s in db["siswa_survei"].find({}, {"_id": 0})}
+    masters_raw = list(db["siswa_master"].find({}, {"_id": 0}))
+    surveis_raw = list(db["siswa_survei"].find({}, {"_id": 0}))
+    
+    masters = {clean_nisn(m.get("NISN", "")): m for m in masters_raw}
+    surveis = {clean_nisn(s.get("NISN", "")): s for s in surveis_raw}
+    
+    all_nisn = set(masters.keys()) | set(surveis.keys())
     
     data_gabungan = []
-    for m in masters:
-        nisn = str(m["NISN"]).strip()
-        if nisn in surveis: 
-            row = {**m, **surveis[nisn]}
-            row["Nilai Akademik"] = row.pop("Nilai", 0) # Ubah nama 'Nilai' jadi 'Nilai Akademik'
-            data_gabungan.append(row)
-        else:
-            row = {**m}
-            row["Nilai Akademik"] = row.pop("Nilai", 0)
-            data_gabungan.append(row)
+    for nisn in all_nisn:
+        if not nisn: continue
+        m = masters.get(nisn, {})
+        s = surveis.get(nisn, {})
+        
+        row = {**m, **s}
+        if "Nama" not in row or not row["Nama"]: row["Nama"] = s.get("Nama", f"Siswa {nisn}")
+        if "Kelas" not in row or not row["Kelas"]: row["Kelas"] = s.get("Kelas", "-")
+        row["NISN"] = nisn
+        row["Nilai Akademik"] = m.get("Nilai", 0)
+        data_gabungan.append(row)
+        
+    # TAMBAHAN: Urutkan berdasarkan NISN terbesar ke terkecil
+    data_gabungan.sort(key=lambda x: str(x.get("NISN", "")), reverse=True)
+        
     return data_gabungan
 
 # ================================================================
-# IMPORT EXCEL (HISTORIS LENGKAP)
+# IMPORT & MANAJEMEN NILAI (GURU)
 # ================================================================
 def import_data_historis_lengkap(df_excel):
     db = _db()
     count_master = 0
-    count_survei = 0
-    
-    # Kolom yang masuk ke Master (Biodata & Nilai Mapel)
     kolom_master = ["NISN", "Nama", "Kelas", "Nilai"] + [c for c in df_excel.columns if '_S1' in c or '_S2' in c]
-    # Kolom yang masuk ke Survei (Psikologis & Demografi)
-    kolom_survei = [
-        "Usia", "Pendidikan Terakhir Ayah", "Pendidikan Terakhir Ibu", 
-        "Perkiraan Pendapatan Orang Tua per bulan", "Jarak rumah ke sekolah", 
-        "Fasilitas yang tersedia di rumah (centang semua yang sesuai):", 
-        "Rata-rata berapa jam per hari kamu menggunakan gadget/HP di luar keperluan belajar (bermain game, media sosial, menonton video)?", 
-        "Rata-rata berapa jam kamu BELAJAR DI RUMAH setiap hari (di luar jam sekolah)?", 
-        "Berapa jam per MINGGU kamu mengikuti LES / BIMBINGAN BELAJAR di luar sekolah  ?", 
-        "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?", 
-        "Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"
-    ]
     
     for index, row in df_excel.iterrows():
-        nisn = str(row["NISN"]).replace('.0', '').strip()
+        nisn = clean_nisn(row["NISN"])
+        if not nisn: continue
         
-        # 1. Simpan ke Master
         data_master = {"NISN": nisn}
         for k in kolom_master:
             if k != "NISN" and k in df_excel.columns: 
@@ -167,28 +168,41 @@ def import_data_historis_lengkap(df_excel):
         db["siswa_master"].update_one({"NISN": nisn}, {"$set": data_master}, upsert=True)
         count_master += 1
         
-        # 2. Simpan ke Survei
-        if all(k in df_excel.columns for k in kolom_survei):
-            data_survei = {"NISN": nisn, "timestamp": datetime.now().isoformat()}
-            for k in kolom_survei:
-                val = row[k] if pd.notna(row[k]) else (3.0 if k in ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"] else 0)
-                data_survei[k] = float(val) if isinstance(val, (int, float)) else val
-            db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_survei}, upsert=True)
-            count_survei += 1
-            
-        # 3. Buatkan Akun
         if not db["siswa_akun"].find_one({"NISN": nisn}):
-            db["siswa_akun"].insert_one({"NISN": nisn, "Password_Hash": hash_password(nisn), "sudah_isi_survei": True})
+            db["siswa_akun"].insert_one({"NISN": nisn, "Password_Hash": hash_password(nisn), "sudah_isi_survei": False})
             
-    return count_master, count_survei
+    return count_master
 
-def import_dapodik_ke_db(df_dapodik):
+def tambah_siswa_baru(nisn, nama, kelas, nilai):
     db = _db()
-    db["siswa_master"].delete_many({})
-    db["siswa_akun"].delete_many({})
-    master_records = df_dapodik[["NISN", "Nama", "Kelas", "Nilai"]].to_dict("records")
-    if master_records: db["siswa_master"].insert_many(master_records)
-    return len(master_records)
+    nisn_clean = clean_nisn(nisn)
+    db["siswa_master"].update_one(
+        {"NISN": nisn_clean},
+        {"$set": {"Nama": str(nama).strip(), "Kelas": str(kelas).strip(), "Nilai": float(nilai)}},
+        upsert=True
+    )
+    if not db["siswa_akun"].find_one({"NISN": nisn_clean}):
+        db["siswa_akun"].insert_one({"NISN": nisn_clean, "Password_Hash": hash_password(nisn_clean), "sudah_isi_survei": False})
+    return True
 
-def tambah_log(entry):
-    _db().log.insert_one(dict(entry))
+def update_nilai_siswa(nisn, data_dict):
+    db = _db()
+    nisn_clean = clean_nisn(nisn)
+    try:
+        db["siswa_master"].update_one({"NISN": nisn_clean}, {"$set": data_dict}, upsert=True)
+        return True, "Data nilai berhasil diperbarui."
+    except Exception as e:
+        return False, f"Gagal update nilai: {e}"
+
+def get_semua_akun_siswa():
+    db = _db()
+    masters = list(db["siswa_master"].find({}, {"_id": 0}))
+    data = [{"NISN": m.get("NISN"), "Nama": m.get("Nama"), "Kelas": m.get("Kelas"), "Password Default": m.get("NISN")} for m in masters]
+    
+    # TAMBAHAN: Sortir dataframe berdasarkan NISN
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df["NISN"] = df["NISN"].astype(str)
+        df = df.sort_values(by="NISN", ascending=False)
+        
+    return df
