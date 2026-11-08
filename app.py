@@ -57,14 +57,52 @@ def safe_fasilitas(val):
     return len(str(val).split(','))
 
 # ================================================================
-# ★ KONSTANTA
+# ★ KONSTANTA (8 KONSTRUK)
 # ================================================================
 KONSTRUK_ITEMS = {
-    "Self_Efficacy": ["Saya merasa puas ketika berhasil memahami materi yang sulit", "Saya merasa nyaman dengan teman-teman sekelas", "Saya yakin bisa memahami materi pelajaran yang paling sulit sekalipun", "Saya yakin bisa mengerjakan tugas dengan baik jika saya berusaha keras", "Saya yakin bisa menguasai keterampilan yang diajarkan di kelas", "Saya yakin bisa mendapat nilai bagus jika saya belajar sungguh-sungguh"],
-    "Academic_Anxiety": ["Saya malas belajar", "Saya merasa cemas menghadapi ujian akhir", "Saya merasa tertekan dengan target nilai yang harus saya capai", "Saya sulit memahami materi pelajaran"],
-    "School_Support": ["Guru-guru menuntut saya untuk lulus dengan baik", "Guru-guru di sekolah saya mengajar dengan baik", "Fasilitas sekolah (perpustakaan, laboratorium) mendukung pembelajaran", "Guru memberikan perhatian jika saya kesulitan belajar", "Suasana di sekolah saya mendukung untuk belajar"],
-    "Parental_Involvement": ["Orang tua menyediakan waktu untuk membantu saya belajar", "Orang tua mendorong saya untuk meraih cita-cita", "Orang tua menghargai prestasi yang saya capai", "Orang tua menyediakan fasilitas yang saya butuhkan untuk belajar", "Orang tua memantau kegiatan belajar saya di rumah", "Orang tua menanyakan tentang nilai atau tugas sekolah", "Orang tua saya menuntut nilai yang tinggi"],
-    "Learning_Motivation": ["Saya senang belajar hal-hal baru di sekolah", "Saya belajar karena ingin tahu lebih banyak", "Saya belajar karena ingin mendapat nilai yang bagus", "Saya belajar karena orang tua saya menyuruh", "Saya merasa belajar di sekolah membuang waktu"],
+    "Self_Efficacy": [
+        "Saya merasa puas ketika berhasil memahami materi yang sulit", 
+        "Saya merasa nyaman dengan teman-teman sekelas", 
+        "Saya yakin bisa memahami materi pelajaran yang paling sulit sekalipun", 
+        "Saya yakin bisa mengerjakan tugas dengan baik jika saya berusaha keras", 
+        "Saya yakin bisa menguasai keterampilan yang diajarkan di kelas", 
+        "Saya yakin bisa mendapat nilai bagus jika saya belajar sungguh-sungguh"
+    ],
+    "Learning_Motivation": [
+        "Saya senang belajar hal-hal baru di sekolah", 
+        "Saya belajar karena ingin tahu lebih banyak", 
+        "Saya belajar karena ingin mendapat nilai yang bagus", 
+        "Saya belajar karena orang tua saya menyuruh", 
+        "Saya merasa belajar di sekolah membuang waktu"
+    ],
+    "School_Support": [
+        "Guru-guru menuntut saya untuk lulus dengan baik", 
+        "Guru-guru di sekolah saya mengajar dengan baik", 
+        "Guru memberikan perhatian jika saya kesulitan belajar", 
+        "Suasana di sekolah saya mendukung untuk belajar"
+    ],
+    "Parental_Expectations": [
+        "Orang tua mendorong saya untuk meraih cita-cita", 
+        "Orang tua saya menuntut nilai yang tinggi"
+    ],
+    "School_Facilities": [
+        "Fasilitas sekolah (perpustakaan, laboratorium) mendukung pembelajaran"
+    ],
+    "Academic_Anxiety": [
+        "Saya merasa cemas menghadapi ujian akhir", 
+        "Saya merasa tertekan dengan target nilai yang harus saya capai", 
+        "Saya sulit memahami materi pelajaran"
+    ],
+    "Parental_Involvement": [
+        "Orang tua menyediakan waktu untuk membantu saya belajar", 
+        "Orang tua menghargai prestasi yang saya capai", 
+        "Orang tua menyediakan fasilitas yang saya butuhkan untuk belajar", 
+        "Orang tua memantau kegiatan belajar saya di rumah", 
+        "Orang tua menanyakan tentang nilai atau tugas sekolah"
+    ],
+    "Learning_Laziness": [
+        "Saya malas belajar"
+    ]
 }
 
 REVERSE_ITEMS = {"Saya malas belajar", "Saya sulit memahami materi pelajaran", "Saya merasa belajar di sekolah membuang waktu"}
@@ -82,9 +120,29 @@ NON_LIKERT_ITEMS = {
     "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?": {"type": "number", "min": 0, "max": 10, "default": 1, "step": 1, "label": "Jumlah ekstrakurikuler"},
 }
 
-BASELINE_ASPEK = {"Self_Efficacy": 4.634, "Academic_Anxiety": 3.547, "School_Support": 4.656, "Parental_Involvement": 3.462, "Learning_Motivation": 4.292}
-RATA_RATA_NILAI = 83.78
-ATE_DAG3 = {"Parental_Involvement": 2.1117, "School_Support": -0.1741, "Self_Efficacy": 3.8205, "Learning_Motivation": 0.4150, "Academic_Anxiety": 1.5466}
+BASELINE_ASPEK = {
+    "Self_Efficacy": 4.634, 
+    "Learning_Motivation": 2.517, 
+    "School_Support": 4.600, 
+    "Parental_Expectations": 3.450,
+    "School_Facilities": 4.880,
+    "Academic_Anxiety": 2.893, 
+    "Parental_Involvement": 4.348, 
+    "Learning_Laziness": 1.487
+}
+
+RATA_RATA_NILAI = 83.780
+
+ATE_DAG3 = {
+    "Self_Efficacy": +2.1995, 
+    "Parental_Involvement": +1.7559, 
+    "Learning_Laziness": +0.7320,
+    "Academic_Anxiety": +0.7197,
+    "School_Facilities": +0.6182,
+    "Parental_Expectations": -0.6987,
+    "School_Support": -1.0351,
+    "Learning_Motivation": -1.9093
+}
 
 # ================================================================
 # HELPER
@@ -359,7 +417,6 @@ with st.sidebar:
 
     if menu_choice != st.session_state.last_menu:
         st.session_state.last_menu = menu_choice
-        # Reset halaman ke 1 jika pindah menu
         st.session_state.page_survei = 1
         st.session_state.page_nilai = 1
         
@@ -489,10 +546,8 @@ elif st.session_state.current_page == "monitoring":
         if df_siswa.empty: st.info("Belum ada data siswa yang cocok.")
         else:
             for idx, row in df_siswa.iterrows():
-                # TAMPILAN MENGGUNAKAN NISN, BUKAN NO URUT
                 col1, col2, col3, col4, col5, col6 = st.columns([1.5, 3, 2, 1, 2, 1.5])
-                col1.write(f"**{row.get('NISN', '-')}**"); col2.write(f"**{row['Nama']}**"); col3.write(f"Kelas: {row.get('Kelas', '-')}"); col4.write(f"Kelas: {row.get('Kelas', '-')}") # typo di kode asli, dibiarkan
-                col5.write(f"Nilai: {row.get('Nilai Akademik', '0')}")
+                col1.write(f"**{row.get('NISN', '-')}**"); col2.write(f"**{row['Nama']}**"); col3.write(f"Kelas: {row.get('Kelas', '-')}"); col5.write(f"Nilai: {row.get('Nilai Akademik', '0')}")
                 with col6:
                     b1, b2 = st.columns(2)
                     if b1.button("👁️ Portal", key=f"prev_{row['NISN']}"):
@@ -502,7 +557,7 @@ elif st.session_state.current_page == "monitoring":
                 st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: DAFTAR SURVEI (PAGINATION + NISN SEBAGAI KOLOM PERTAMA)
+# HALAMAN: DAFTAR SURVEI (LOGIKA DIPERBAIKI)
 # ================================================================
 elif st.session_state.current_page == "list_survei":
     st.title("Data Survei Siswa")
@@ -514,7 +569,6 @@ elif st.session_state.current_page == "list_survei":
     if df_siswa.empty: 
         st.warning("Belum ada data siswa.")
     else:
-        # PENCARIAN BERDASARKAN NAMA ATAU NISN
         cari = st.text_input("🔍 Cari nama atau NISN siswa:")
         if cari: 
             mask = df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)
@@ -522,7 +576,6 @@ elif st.session_state.current_page == "list_survei":
         
         st.markdown("---")
         
-        # --- LOGIKA PAGINATION ---
         items_per_page = 10
         total_pages = math.ceil(len(df_siswa) / items_per_page)
         
@@ -534,16 +587,17 @@ elif st.session_state.current_page == "list_survei":
         df_page = df_siswa.iloc[start_idx:end_idx]
 
         for i, (idx, row) in enumerate(df_page.iterrows()):
-            constructs = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
-            demographics = list(NON_LIKERT_ITEMS.keys())
+            # --- LOGIKA BARU: Cek kelengkapan berdasarkan 5 Konstruk Utama ---
+            main_constructs = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
             
-            is_lengkap = all(pd.notna(row.get(c)) for c in constructs) and all(pd.notna(row.get(d)) for d in demographics if d in df_page.columns)
+            if all(pd.notna(row.get(c)) for c in main_constructs):
+                status_teks = "37/37 (Lengkap) ✅"
+            elif any(pd.notna(row.get(c)) for c in KONSTRUK_ITEMS.keys()):
+                status_teks = "Sebagian ⚠️"
+            else:
+                status_teks = "0/37 (Belum) ❌"
+            # -----------------------------------------------------------------
             
-            if is_lengkap: status_teks = "37/37 (Lengkap) ✅"
-            elif any(pd.notna(row.get(c)) for c in constructs): status_teks = "27/37 (Sebagian) ⚠️"
-            else: status_teks = "0/37 (Belum) ❌"
-            
-            # TAMPILAN MENGGUNAKAN NISN, BUKAN NO URUT
             c1, c2, c3, c4, c5, c6 = st.columns([1.5, 4, 3, 1.2, 1.2, 1.2])
             c1.write(f"**{row['NISN']}**")
             c2.write(f"**{row['Nama']}**")
@@ -555,19 +609,18 @@ elif st.session_state.current_page == "list_survei":
                     st.session_state.current_page = "edit_x"
                     st.rerun()
             with c5:
-                if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}", help="Kembalikan password menjadi NISN"):
+                if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"):
                     reset_password_siswa(row['NISN'])
                     st.success(f"Password {row['Nama']} direset ke NISN.")
                     st.rerun()
             with c6:
-                if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", help="Hapus data survei agar NISN bisa dipakai lagi", type="primary"):
+                if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", type="primary"):
                     hapus_survei_siswa(row['NISN'])
                     st.success(f"Data survei {row['Nama']} dihapus. NISN dapat digunakan kembali.")
                     refresh_pengaruh(); st.rerun()
                     
             st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
-        # --- TOMBOL NAVIGASI PAGINATION ---
         st.markdown("<br>", unsafe_allow_html=True)
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
@@ -582,7 +635,7 @@ elif st.session_state.current_page == "list_survei":
                 st.rerun()
 
 # ================================================================
-# HALAMAN: DAFTAR NILAI (PAGINATION + NISN SEBAGAI KOLOM PERTAMA)
+# HALAMAN: DAFTAR NILAI (PAGINATION)
 # ================================================================
 elif st.session_state.current_page == "list_nilai":
     st.title("Data Nilai Raport Siswa")
@@ -592,7 +645,6 @@ elif st.session_state.current_page == "list_nilai":
     if df_siswa.empty: 
         st.warning("Belum ada data siswa.")
     else:
-        # PENCARIAN BERDASARKAN NAMA ATAU NISN
         cari = st.text_input("🔍 Cari nama atau NISN siswa:")
         if cari: 
             mask = df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)
@@ -600,7 +652,6 @@ elif st.session_state.current_page == "list_nilai":
         
         st.markdown("---")
         
-        # --- LOGIKA PAGINATION ---
         items_per_page = 10
         total_pages = math.ceil(len(df_siswa) / items_per_page)
         
@@ -615,7 +666,6 @@ elif st.session_state.current_page == "list_nilai":
             nilai_skrg = row.get('Nilai Akademik', 0)
             status_teks = "Lengkap" if nilai_skrg > 0 else "Kosong"
             
-            # TAMPILAN MENGGUNAKAN NISN, BUKAN NO URUT
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
             c1.write(f"**{row['NISN']}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Nilai: **{nilai_skrg:.2f}**"); c4.write(f"Status: {status_teks}")
             with c5:
@@ -625,7 +675,6 @@ elif st.session_state.current_page == "list_nilai":
                     st.rerun()
             st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
-        # --- TOMBOL NAVIGASI PAGINATION ---
         st.markdown("<br>", unsafe_allow_html=True)
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
@@ -782,15 +831,20 @@ elif st.session_state.current_page == "rangkuman":
             st.markdown("### 📊 Mengapa Nilai Siswa Ini Seperti Ini?")
             st.write("Grafik di bawah menunjukkan hal-hal apa saja yang membuat nilai siswa ini **naik** atau **turun** dibandingkan rata-rata teman sekelasnya.")
             
-            df_ate = pd.DataFrame({"Faktor": list(ATE_DAG3.keys()), "Pengaruh": list(ATE_DAG3.values())})
-            nama_awam = {"Parental_Involvement": "Dukungan Orang Tua", "School_Support": "Dukungan Sekolah", "Self_Efficacy": "Percaya Diri", "Learning_Motivation": "Semangat Belajar", "Academic_Anxiety": "Rasa Cemas"}
-            df_ate["Faktor_Awam"] = df_ate["Faktor"].map(nama_awam)
+            nama_awam = {
+                "Self_Efficacy": "Percaya Diri", 
+                "Learning_Motivation": "Semangat Belajar", 
+                "School_Support": "Dukungan Sekolah", 
+                "Parental_Expectations": "Harapan Orang Tua",
+                "School_Facilities": "Fasilitas Sekolah",
+                "Academic_Anxiety": "Rasa Cemas", 
+                "Parental_Involvement": "Dukungan Orang Tua", 
+                "Learning_Laziness": "Kemalasan Belajar"
+            }
             
             kontribusi = []
-            for _, row in df_ate.iterrows():
-                f = row["Faktor"]
-                ate = row["Pengaruh"]
-                f_awam = row["Faktor_Awam"]
+            for f, ate in ATE_DAG3.items():
+                f_awam = nama_awam.get(f, f)
                 val_siswa = safe_float(siswa.get(f, 3.0))
                 baseline = BASELINE_ASPEK.get(f, 3.0)
                 dampak = ate * (val_siswa - baseline)
@@ -824,6 +878,9 @@ elif st.session_state.current_page == "rangkuman":
                 elif "Dukungan Orang Tua" in faktor_penekan["Faktor"]:
                     st.markdown("- Hubungi orang tua untuk menyampaikan hal-hal positif tentang siswa (jangan hanya saat ada masalah).\n- Ajak orang tua berdiskusi ringan satu bulan sekali tentang perkembangan anaknya.")
                     rekomendasi_teks += "- Hubungi orang tua dengan kabar positif.\n- Ajak diskusi rutin.\n"
+                elif "Semangat Belajar" in faktor_penekan["Faktor"]:
+                    st.markdown("- Kaitkan materi pelajaran dengan hal yang disukai siswa.\n- Berikan apresiasi saat siswa menunjukkan minat pada suatu topik.\n- Ajak siswa menetapkan target belajar yang menyenangkan.")
+                    rekomendasi_teks += "- Kaitkan materi dengan minat siswa.\n- Apresiasi minat siswa.\n"
                 else:
                     st.markdown("- Ajak siswa mengobrol baik-baik untuk mencari tahu kendala apa yang sedang dihadapinya.")
                     rekomendasi_teks += "- Ajak diskusi mencari kendala.\n"
@@ -852,7 +909,7 @@ Rekomendasi:
             )
 
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR
+# HALAMAN: ANALISIS FAKTOR (DAG & ATE)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
@@ -864,24 +921,43 @@ elif st.session_state.current_page == "kausal":
         tab_alur, tab_tambah, tab_grafik = st.tabs(["🗺️ Alur Hubungan", "📝 Tambah Pertanyaan Baru", "📊 Pengaruh Tiap Faktor"])
         
         with tab_alur:
-            st.markdown("### Alur Hubungan Antar Faktor")
-            st.write("Gambar ini menunjukkan bahwa satu faktor bisa mempengaruhi faktor lain, dan akhirnya mempengaruhi nilai siswa.")
+            st.markdown("### Alur Hubungan Antar Faktor (DAG)")
+            st.write("Gambar ini menunjukkan hubungan sebab-akibat antar variabel. Garis panah menunjukkan arah pengaruh hingga akhirnya mempengaruhi Nilai Raport.")
             
-            posisi = {"Nilai Raport": (0, 0), "Percaya Diri": (-1, 1.5), "Dukungan Ortu": (1, 1.5), "Dukungan Sekolah": (0, 2), "Semangat Belajar": (-1, -1.5), "Rasa Cemas": (1, -1.5)}
-            edges = [("Percaya Diri", "Nilai Raport"), ("Dukungan Ortu", "Nilai Raport"), ("Dukungan Sekolah", "Percaya Diri"), ("Dukungan Sekolah", "Semangat Belajar"), ("Semangat Belajar", "Nilai Raport"), ("Rasa Cemas", "Nilai Raport"), ("Dukungan Ortu", "Percaya Diri")]
+            posisi = {
+                "Nilai Raport": (0, 0),
+                "Cluster 0\n(Self-Efficacy)": (-2, 2),
+                "Cluster 1\n(Motivation)": (-2, -1),
+                "Cluster 2\n(School Support)": (0, 3),
+                "Cluster 3\n(Parental Exp.)": (2, 3),
+                "Cluster 4\n(School Facilities)": (-2, -3),
+                "Cluster 5\n(Academic Anxiety)": (2, 0),
+                "Cluster 6\n(Parental Inv.)": (0, -2),
+                "Cluster 7\n(Laziness)": (2, -2)
+            }
+            edges = [
+                ("Cluster 0\n(Self-Efficacy)", "Nilai Raport"),
+                ("Cluster 1\n(Motivation)", "Nilai Raport"),
+                ("Cluster 2\n(School Support)", "Nilai Raport"),
+                ("Cluster 3\n(Parental Exp.)", "Nilai Raport"),
+                ("Cluster 4\n(School Facilities)", "Nilai Raport"),
+                ("Cluster 5\n(Academic Anxiety)", "Nilai Raport"),
+                ("Cluster 6\n(Parental Inv.)", "Nilai Raport"),
+                ("Cluster 7\n(Laziness)", "Nilai Raport"),
+            ]
             
             edge_x, edge_y = [], []
             for e in edges:
                 x0, y0 = posisi[e[0]]; x1, y1 = posisi[e[1]]
                 edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
 
-            edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=2, color='#888'), hoverinfo='none', mode='lines')
+            edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1.5, color='#888'), hoverinfo='none', mode='lines')
             node_x, node_y, node_text = [], [], []
             for node, (x, y) in posisi.items():
                 node_x.append(x); node_y.append(y); node_text.append(node)
 
-            node_trace = go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition="bottom center", hoverinfo='text', marker=dict(showscale=False, color='#0d9488', size=30, line_width=2))
-            fig_dag = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=20), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), height=400, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"))
+            node_trace = go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition="top center", hoverinfo='text', marker=dict(showscale=False, color='#1f77b4', size=30, line_width=2))
+            fig_dag = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=20), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), height=450, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"))
             st.plotly_chart(fig_dag, use_container_width=True)
 
         with tab_tambah:
@@ -895,18 +971,27 @@ elif st.session_state.current_page == "kausal":
                     st.success(f"Faktor '{variabel_baru}' berhasil ditambahkan ke sistem!")
         
         with tab_grafik:
-            st.markdown("### Seberapa Besar Pengaruh Faktor Ini ke Nilai?")
-            st.write("Grafik di bawah menunjukkan, jika faktor ini ditingkatkan, apakah nilai siswa akan naik atau turun secara keseluruhan.")
+            st.markdown("### Seberapa Besar Pengaruh Faktor Ini ke Nilai? (ATE)")
+            st.write("Grafik di bawah menunjukkan, jika faktor ini ditingkatkan, apakah nilai siswa akan naik atau turun secara keseluruhan berdasarkan analisis kausal.")
             
             df_ate = pd.DataFrame({"Faktor": list(ATE_DAG3.keys()), "Pengaruh": list(ATE_DAG3.values())}).sort_values("Pengaruh")
-            nama_awam = {"Parental_Involvement": "Dukungan Orang Tua", "School_Support": "Dukungan Sekolah", "Self_Efficacy": "Percaya Diri", "Learning_Motivation": "Semangat Belajar", "Academic_Anxiety": "Rasa Cemas"}
+            nama_awam = {
+                "Self_Efficacy": "Percaya Diri", 
+                "Learning_Motivation": "Semangat Belajar", 
+                "School_Support": "Dukungan Sekolah", 
+                "Parental_Expectations": "Harapan Orang Tua",
+                "School_Facilities": "Fasilitas Sekolah",
+                "Academic_Anxiety": "Rasa Cemas", 
+                "Parental_Involvement": "Dukungan Orang Tua", 
+                "Learning_Laziness": "Kemalasan Belajar"
+            }
             df_ate["Faktor"] = df_ate["Faktor"].map(nama_awam)
             
             st.info(f"💡 **Kesimpulan:** Faktor yang paling kuat menaikkan nilai secara umum adalah **{df_ate.iloc[-1]['Faktor']}**.")
             
             fig = px.bar(df_ate, x="Pengaruh", y="Faktor", orientation="h", color="Pengaruh", color_continuous_scale="RdBu", text=[f"{v:+.2f}" for v in df_ate["Pengaruh"]])
             fig.update_traces(textposition="outside")
-            fig.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", coloraxis_showscale=False)
+            fig.update_layout(height=400, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", coloraxis_showscale=False)
             st.plotly_chart(fig, use_container_width=True)
 
     else: # Mode "Penjelasan Satu Siswa"
@@ -930,15 +1015,20 @@ elif st.session_state.current_page == "kausal":
                 st.markdown(f"### Analisis Faktor: {nama} ({kelas})")
                 st.write("Berikut adalah kesimpulan singkat mengenai faktor yang mempengaruhi nilai siswa ini.")
 
-                df_ate = pd.DataFrame({"Faktor": list(ATE_DAG3.keys()), "Pengaruh": list(ATE_DAG3.values())})
-                nama_awam = {"Parental_Involvement": "Dukungan Orang Tua", "School_Support": "Dukungan Sekolah", "Self_Efficacy": "Percaya Diri", "Learning_Motivation": "Semangat Belajar", "Academic_Anxiety": "Rasa Cemas"}
-                df_ate["Faktor_Awam"] = df_ate["Faktor"].map(nama_awam)
+                nama_awam = {
+                    "Self_Efficacy": "Percaya Diri", 
+                    "Learning_Motivation": "Semangat Belajar", 
+                    "School_Support": "Dukungan Sekolah", 
+                    "Parental_Expectations": "Harapan Orang Tua",
+                    "School_Facilities": "Fasilitas Sekolah",
+                    "Academic_Anxiety": "Rasa Cemas", 
+                    "Parental_Involvement": "Dukungan Orang Tua", 
+                    "Learning_Laziness": "Kemalasan Belajar"
+                }
 
                 kontribusi = []
-                for _, row in df_ate.iterrows():
-                    f = row["Faktor"]
-                    ate = row["Pengaruh"]
-                    f_awam = row["Faktor_Awam"]
+                for f, ate in ATE_DAG3.items():
+                    f_awam = nama_awam.get(f, f)
                     val_siswa = safe_float(siswa.get(f, 3.0))
                     baseline = BASELINE_ASPEK.get(f, 3.0)
                     dampak = ate * (val_siswa - baseline)
@@ -986,16 +1076,25 @@ elif st.session_state.current_page == "kausal":
 # ================================================================
 elif st.session_state.current_page == "prediksi":
     st.title("Simulasi Nilai Siswa")
+    st.write("Geser nilai di bawah ini untuk melihat perkiraan nilai siswa jika faktor-faktornya diubah.")
+    
     c1, c2 = st.columns(2)
     with c1:
-        p_se  = st.slider("Tingkat Percaya Diri", 1.0, 5.0, 4.0, 0.1)
-        p_mot = st.slider("Semangat Belajar", 1.0, 5.0, 4.0, 0.1)
-        p_cem = st.slider("Rasa Cemas", 1.0, 5.0, 3.0, 0.1)
+        p_se  = st.slider("Percaya Diri", 1.0, 5.0, BASELINE_ASPEK["Self_Efficacy"], 0.1)
+        p_mot = st.slider("Semangat Belajar", 1.0, 5.0, BASELINE_ASPEK["Learning_Motivation"], 0.1)
+        p_cem = st.slider("Rasa Cemas", 1.0, 5.0, BASELINE_ASPEK["Academic_Anxiety"], 0.1)
+        p_lazy = st.slider("Kemalasan Belajar", 1.0, 5.0, BASELINE_ASPEK["Learning_Laziness"], 0.1)
     with c2:
-        p_ortu = st.slider("Dukungan Orang Tua", 1.0, 5.0, 3.5, 0.1)
-        p_sekolah = st.slider("Dukungan Sekolah", 1.0, 5.0, 4.5, 0.1)
+        p_ortu = st.slider("Dukungan Orang Tua", 1.0, 5.0, BASELINE_ASPEK["Parental_Involvement"], 0.1)
+        p_exp = st.slider("Harapan Orang Tua", 1.0, 5.0, BASELINE_ASPEK["Parental_Expectations"], 0.1)
+        p_sekolah = st.slider("Dukungan Sekolah", 1.0, 5.0, BASELINE_ASPEK["School_Support"], 0.1)
+        p_fas = st.slider("Fasilitas Sekolah", 1.0, 5.0, BASELINE_ASPEK["School_Facilities"], 0.1)
+        
     if st.button("Hitung Perkiraan Nilai", type="primary"):
-        profil = {"Self_Efficacy": p_se, "Academic_Anxiety": p_cem, "School_Support": p_sekolah, "Parental_Involvement": p_ortu, "Learning_Motivation": p_mot}
+        profil = {
+            "Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Learning_Laziness": p_lazy,
+            "Parental_Involvement": p_ortu, "Parental_Expectations": p_exp, "School_Support": p_sekolah, "School_Facilities": p_fas
+        }
         score = RATA_RATA_NILAI + sum([ATE_DAG3[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
         st.markdown(f'<div style="background:white; border-left:5px solid {warna}; padding:2rem; border-radius:8px; text-align:center; margin-top:20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"><h3 style="margin:0; color:#475569;">Hasil Perkiraan Nilai</h3><h1 style="font-size:4rem; color:{warna}; margin:10px 0;">{score:.2f}</h1><h4 style="margin:0; color:{warna};">Kategori: {kat}</h4></div>', unsafe_allow_html=True)
