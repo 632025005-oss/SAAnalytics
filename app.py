@@ -57,7 +57,7 @@ def safe_fasilitas(val):
     return len(str(val).split(','))
 
 # ================================================================
-# ★ KONSTANTA (8 KONSTRUK)
+# ★ KONSTANTA
 # ================================================================
 KONSTRUK_ITEMS = {
     "Self_Efficacy": [
@@ -133,15 +133,47 @@ BASELINE_ASPEK = {
 
 RATA_RATA_NILAI = 83.780
 
-ATE_DAG3 = {
-    "Self_Efficacy": +2.1995, 
-    "Parental_Involvement": +1.7559, 
-    "Learning_Laziness": +0.7320,
-    "Academic_Anxiety": +0.7197,
-    "School_Facilities": +0.6182,
-    "Parental_Expectations": -0.6987,
-    "School_Support": -1.0351,
-    "Learning_Motivation": -1.9093
+# --- DAFTAR MODEL DAG ---
+# Angka ATE DAG 1, 2, 4 di bawah ini masih dummy (sementara). 
+# Silakan ganti dengan angka dari Jurnal Anda jika ingin ditampilkan.
+DAG_MODELS = {
+    "Model 1: Pengaruh Langsung (Baseline)": {
+        "deskripsi": "Model paling sederhana (Input-Output). Semua faktor dianggap mempengaruhi nilai secara langsung tanpa perantara.",
+        "ate": {
+            "Self_Efficacy": 1.500, "Learning_Motivation": -0.800, "School_Support": -0.500,
+            "Parental_Expectations": -0.400, "School_Facilities": 0.300, "Academic_Anxiety": 0.600,
+            "Parental_Involvement": 1.200, "Learning_Laziness": 0.500
+        }
+    },
+    "Model 2: Mediasi Penuh (Self-Determination)": {
+        "deskripsi": "Lingkungan sosial (orang tua, sekolah) mempengaruhi prestasi melalui mekanisme psikologis (motivasi & efikasi diri).",
+        "ate": {
+            "Self_Efficacy": 2.100, "Learning_Motivation": 0.900, "School_Support": -0.100,
+            "Parental_Expectations": -0.200, "School_Facilities": 0.400, "Academic_Anxiety": 0.800,
+            "Parental_Involvement": 1.600, "Learning_Laziness": 0.600
+        }
+    },
+    "Model 3: Kecemasan sebagai Penekan (UTAMA)": {
+        "deskripsi": "Model utama thesis (Lazarus & Bandura). Kecemasan berperan ganda: bisa memicu semangat, tapi juga bisa menekan jika berlebihan.",
+        "ate": {
+            "Self_Efficacy": +2.1995, 
+            "Parental_Involvement": +1.7559, 
+            "Learning_Laziness": +0.7320,
+            "Academic_Anxiety": +0.7197,
+            "School_Facilities": +0.6182,
+            "Parental_Expectations": -0.6987,
+            "School_Support": -1.0351,
+            "Learning_Motivation": -1.9093
+        }
+    },
+    "Model 4: Model Lengkap (Ekologis & SRL)": {
+        "deskripsi": "Model pemodelan komprehensif (Bronfenbrenner & Zimmerman). Mencakup semua jalur interaksi ekologis dan self-regulated learning.",
+        "ate": {
+            "Self_Efficacy": 2.500, "Learning_Motivation": 0.500, "School_Support": 0.200,
+            "Parental_Expectations": -0.300, "School_Facilities": 0.700, "Academic_Anxiety": -0.500,
+            "Parental_Involvement": 1.800, "Learning_Laziness": -0.900
+        }
+    }
 }
 
 # ================================================================
@@ -557,7 +589,7 @@ elif st.session_state.current_page == "monitoring":
                 st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: DAFTAR SURVEI (LOGIKA DIPERBAIKI)
+# HALAMAN: DAFTAR SURVEI
 # ================================================================
 elif st.session_state.current_page == "list_survei":
     st.title("Data Survei Siswa")
@@ -587,7 +619,6 @@ elif st.session_state.current_page == "list_survei":
         df_page = df_siswa.iloc[start_idx:end_idx]
 
         for i, (idx, row) in enumerate(df_page.iterrows()):
-            # --- LOGIKA BARU: Cek kelengkapan berdasarkan 5 Konstruk Utama ---
             main_constructs = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
             
             if all(pd.notna(row.get(c)) for c in main_constructs):
@@ -596,7 +627,6 @@ elif st.session_state.current_page == "list_survei":
                 status_teks = "Sebagian ⚠️"
             else:
                 status_teks = "0/37 (Belum) ❌"
-            # -----------------------------------------------------------------
             
             c1, c2, c3, c4, c5, c6 = st.columns([1.5, 4, 3, 1.2, 1.2, 1.2])
             c1.write(f"**{row['NISN']}**")
@@ -842,8 +872,11 @@ elif st.session_state.current_page == "rangkuman":
                 "Learning_Laziness": "Kemalasan Belajar"
             }
             
+            # Menggunakan DAG 3 sebagai acuan default untuk Laporan
+            current_ate = DAG_MODELS["Model 3: Kecemasan sebagai Penekan (UTAMA)"]["ate"]
+            
             kontribusi = []
-            for f, ate in ATE_DAG3.items():
+            for f, ate in current_ate.items():
                 f_awam = nama_awam.get(f, f)
                 val_siswa = safe_float(siswa.get(f, 3.0))
                 baseline = BASELINE_ASPEK.get(f, 3.0)
@@ -909,11 +942,17 @@ Rekomendasi:
             )
 
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR (DAG & ATE)
+# HALAMAN: ANALISIS FAKTOR (PILIHAN MODEL DAG)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
     st.write("Halaman ini menunjukkan alur hubungan faktor dan seberapa besar pengaruhnya terhadap nilai siswa.")
+    
+    # Pilihan Model DAG
+    model_terpilih = st.selectbox("Pilih Model Analisis Faktor (DAG):", list(DAG_MODELS.keys()))
+    info_model = DAG_MODELS[model_terpilih]
+    
+    st.info(f"📌 **{model_terpilih}**: {info_model['deskripsi']}")
     
     mode_tampilan = st.radio("Pilih Tampilan Analisis:", ["Gambaran Umum Sekolah", "Penjelasan Satu Siswa"], horizontal=True)
 
@@ -921,9 +960,10 @@ elif st.session_state.current_page == "kausal":
         tab_alur, tab_tambah, tab_grafik = st.tabs(["🗺️ Alur Hubungan", "📝 Tambah Pertanyaan Baru", "📊 Pengaruh Tiap Faktor"])
         
         with tab_alur:
-            st.markdown("### Alur Hubungan Antar Faktor (DAG)")
+            st.markdown(f"### Alur Hubungan Antar Faktor ({model_terpilih})")
             st.write("Gambar ini menunjukkan hubungan sebab-akibat antar variabel. Garis panah menunjukkan arah pengaruh hingga akhirnya mempengaruhi Nilai Raport.")
             
+            # Menggambar DAG (Versi visualisasi generik yang sama untuk semua model untuk mempermudah)
             posisi = {
                 "Nilai Raport": (0, 0),
                 "Cluster 0\n(Self-Efficacy)": (-2, 2),
@@ -971,10 +1011,11 @@ elif st.session_state.current_page == "kausal":
                     st.success(f"Faktor '{variabel_baru}' berhasil ditambahkan ke sistem!")
         
         with tab_grafik:
-            st.markdown("### Seberapa Besar Pengaruh Faktor Ini ke Nilai? (ATE)")
-            st.write("Grafik di bawah menunjukkan, jika faktor ini ditingkatkan, apakah nilai siswa akan naik atau turun secara keseluruhan berdasarkan analisis kausal.")
+            st.markdown(f"### Seberapa Besar Pengaruh Faktor Ini ke Nilai? (Berdasarkan {model_terpilih})")
+            st.write("Grafik di bawah menunjukkan, jika faktor ini ditingkatkan, apakah nilai siswa akan naik atau turun secara keseluruhan berdasarkan analisis kausal model yang dipilih.")
             
-            df_ate = pd.DataFrame({"Faktor": list(ATE_DAG3.keys()), "Pengaruh": list(ATE_DAG3.values())}).sort_values("Pengaruh")
+            current_ate = info_model["ate"]
+            df_ate = pd.DataFrame({"Faktor": list(current_ate.keys()), "Pengaruh": list(current_ate.values())}).sort_values("Pengaruh")
             nama_awam = {
                 "Self_Efficacy": "Percaya Diri", 
                 "Learning_Motivation": "Semangat Belajar", 
@@ -1013,7 +1054,7 @@ elif st.session_state.current_page == "kausal":
 
                 st.markdown("---")
                 st.markdown(f"### Analisis Faktor: {nama} ({kelas})")
-                st.write("Berikut adalah kesimpulan singkat mengenai faktor yang mempengaruhi nilai siswa ini.")
+                st.write("Berikut adalah kesimpulan singkat mengenai faktor yang mempengaruhi nilai siswa ini berdasarkan model yang dipilih.")
 
                 nama_awam = {
                     "Self_Efficacy": "Percaya Diri", 
@@ -1026,8 +1067,9 @@ elif st.session_state.current_page == "kausal":
                     "Learning_Laziness": "Kemalasan Belajar"
                 }
 
+                current_ate = info_model["ate"]
                 kontribusi = []
-                for f, ate in ATE_DAG3.items():
+                for f, ate in current_ate.items():
                     f_awam = nama_awam.get(f, f)
                     val_siswa = safe_float(siswa.get(f, 3.0))
                     baseline = BASELINE_ASPEK.get(f, 3.0)
@@ -1054,13 +1096,13 @@ elif st.session_state.current_page == "kausal":
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("Lihat Detail Grafik (Opsional)"):
-                    st.write("Grafik di bawah menunjukkan perbandingan faktor siswa ini dengan rata-rata teman sekelasnya. **Poin positif (biru)** berarti membantu menaikkan nilai. **Poin negatif (merah)** berarti menurunkan nilai.")
+                    st.write("Grafik di bawah menunjukkan perbandingan faktor siswa ini dengan rata-rata teman sekelasnya.")
                     fig = px.bar(df_kontrib, x="Pengaruh (Poin)", y="Faktor", orientation="h", color="Pengaruh (Poin)", color_continuous_scale="RdBu", text=[f"{v:+.2f} poin" for v in df_kontrib["Pengaruh (Poin)"]])
                     fig.update_traces(textposition="outside")
                     fig.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", coloraxis_showscale=False)
                     st.plotly_chart(fig, use_container_width=True)
 
-                laporan = f"LAPORAN ANALISIS FAKTOR SISWA\nNama: {nama}\nKelas: {kelas}\nNISN: {nisn}\nNilai: {nilai:.2f}\n\nPengaruh Faktor:\n"
+                laporan = f"LAPORAN ANALISIS FAKTOR SISWA\nNama: {nama}\nKelas: {kelas}\nNISN: {nisn}\nNilai: {nilai:.2f}\nModel: {model_terpilih}\n\nPengaruh Faktor:\n"
                 for _, row in df_kontrib.iterrows():
                     laporan += f"- {row['Faktor']}: {row['Pengaruh (Poin)']:+.2f} poin\n"
 
@@ -1076,7 +1118,7 @@ elif st.session_state.current_page == "kausal":
 # ================================================================
 elif st.session_state.current_page == "prediksi":
     st.title("Simulasi Nilai Siswa")
-    st.write("Geser nilai di bawah ini untuk melihat perkiraan nilai siswa jika faktor-faktornya diubah.")
+    st.write("Geser nilai di bawah ini untuk melihat perkiraan nilai siswa jika faktor-faktornya diubah (Berdasarkan DAG 3).")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -1095,7 +1137,8 @@ elif st.session_state.current_page == "prediksi":
             "Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Learning_Laziness": p_lazy,
             "Parental_Involvement": p_ortu, "Parental_Expectations": p_exp, "School_Support": p_sekolah, "School_Facilities": p_fas
         }
-        score = RATA_RATA_NILAI + sum([ATE_DAG3[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
+        current_ate = DAG_MODELS["Model 3: Kecemasan sebagai Penekan (UTAMA)"]["ate"]
+        score = RATA_RATA_NILAI + sum([current_ate[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
         st.markdown(f'<div style="background:white; border-left:5px solid {warna}; padding:2rem; border-radius:8px; text-align:center; margin-top:20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"><h3 style="margin:0; color:#475569;">Hasil Perkiraan Nilai</h3><h1 style="font-size:4rem; color:{warna}; margin:10px 0;">{score:.2f}</h1><h4 style="margin:0; color:{warna};">Kategori: {kat}</h4></div>', unsafe_allow_html=True)
 
@@ -1122,7 +1165,7 @@ elif st.session_state.current_page == "tentang":
     1. **Portal Siswa**: Siswa mendaftar mandiri (NISN & Password sama) dan mengisi survei.
     2. **Menu Nilai Raport**: Guru menginput nilai (bisa per mapel atau satu rata-rata).
     3. **Laporan Siswa**: Pilih siswa untuk melihat alasan nilai mereka naik/turun dan rekomendasi untuk guru.
-    4. **Analisis Faktor**: Lihat alur hubungan faktor atau bandingkan pengaruh faktor per siswa.
+    4. **Analisis Faktor**: Lihat alur hubungan faktor atau bandingkan pengaruh faktor per siswa berdasarkan model DAG.
     """)
 
 elif st.session_state.current_page == "admin_users":
