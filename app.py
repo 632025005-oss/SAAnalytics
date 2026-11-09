@@ -133,9 +133,7 @@ BASELINE_ASPEK = {
 
 RATA_RATA_NILAI = 83.780
 
-# --- DAFTAR MODEL DAG ---
-# Angka ATE DAG 1, 2, 4 di bawah ini masih dummy (sementara). 
-# Silakan ganti dengan angka dari Jurnal Anda jika ingin ditampilkan.
+# --- DEFINISI MODEL DAG & GAMBARNYA ---
 DAG_MODELS = {
     "Model 1: Pengaruh Langsung (Baseline)": {
         "deskripsi": "Model paling sederhana (Input-Output). Semua faktor dianggap mempengaruhi nilai secara langsung tanpa perantara.",
@@ -143,7 +141,14 @@ DAG_MODELS = {
             "Self_Efficacy": 1.500, "Learning_Motivation": -0.800, "School_Support": -0.500,
             "Parental_Expectations": -0.400, "School_Facilities": 0.300, "Academic_Anxiety": 0.600,
             "Parental_Involvement": 1.200, "Learning_Laziness": 0.500
-        }
+        },
+        "posisi": {
+            "Nilai Raport": (0, 0),
+            "Self-Efficacy": (-3, 2), "Motivation": (-1, 2), "School Support": (1, 2), "Parental Exp.": (3, 2),
+            "School Facilities": (-3, -2), "Academic Anxiety": (-1, -2), "Parental Inv.": (1, -2), "Laziness": (3, -2)
+        },
+        "edges": [("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport"), ("School Support", "Nilai Raport"), ("Parental Exp.", "Nilai Raport"),
+                   ("School Facilities", "Nilai Raport"), ("Academic Anxiety", "Nilai Raport"), ("Parental Inv.", "Nilai Raport"), ("Laziness", "Nilai Raport")]
     },
     "Model 2: Mediasi Penuh (Self-Determination)": {
         "deskripsi": "Lingkungan sosial (orang tua, sekolah) mempengaruhi prestasi melalui mekanisme psikologis (motivasi & efikasi diri).",
@@ -151,20 +156,35 @@ DAG_MODELS = {
             "Self_Efficacy": 2.100, "Learning_Motivation": 0.900, "School_Support": -0.100,
             "Parental_Expectations": -0.200, "School_Facilities": 0.400, "Academic_Anxiety": 0.800,
             "Parental_Involvement": 1.600, "Learning_Laziness": 0.600
-        }
+        },
+        "posisi": {
+            "Nilai Raport": (0, 0),
+            "Self-Efficacy": (-1, 1.5), "Motivation": (1, 1.5),
+            "School Support": (0, 3.5), "Parental Inv.": (0, 3.5), "Parental Exp.": (0, 3.5),
+            "School Facilities": (-2, -1.5), "Academic Anxiety": (2, -1.5), "Laziness": (0, -2)
+        },
+        "edges": [("School Support", "Self-Efficacy"), ("Parental Inv.", "Self-Efficacy"), ("Parental Exp.", "Self-Efficacy"),
+                   ("Parental Inv.", "Motivation"), ("School Support", "Motivation"),
+                   ("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport"),
+                   ("Laziness", "Nilai Raport"), ("Academic Anxiety", "Nilai Raport"), ("School Facilities", "Nilai Raport")]
     },
     "Model 3: Kecemasan sebagai Penekan (UTAMA)": {
         "deskripsi": "Model utama thesis (Lazarus & Bandura). Kecemasan berperan ganda: bisa memicu semangat, tapi juga bisa menekan jika berlebihan.",
         "ate": {
-            "Self_Efficacy": +2.1995, 
-            "Parental_Involvement": +1.7559, 
-            "Learning_Laziness": +0.7320,
-            "Academic_Anxiety": +0.7197,
-            "School_Facilities": +0.6182,
-            "Parental_Expectations": -0.6987,
-            "School_Support": -1.0351,
-            "Learning_Motivation": -1.9093
-        }
+            "Self_Efficacy": +2.1995, "Parental_Involvement": +1.7559, "Learning_Laziness": +0.7320,
+            "Academic_Anxiety": +0.7197, "School_Facilities": +0.6182, "Parental_Expectations": -0.6987,
+            "School_Support": -1.0351, "Learning_Motivation": -1.9093
+        },
+        "posisi": {
+            "Nilai Raport": (0, 0),
+            "Cluster 0\n(Self-Efficacy)": (-2, 2), "Cluster 1\n(Motivation)": (-2, -1),
+            "Cluster 2\n(School Support)": (0, 3), "Cluster 3\n(Parental Exp.)": (2, 3),
+            "Cluster 4\n(School Facilities)": (-2, -3), "Cluster 5\n(Academic Anxiety)": (2, 0),
+            "Cluster 6\n(Parental Inv.)": (0, -2), "Cluster 7\n(Laziness)": (2, -2)
+        },
+        "edges": [("Cluster 0\n(Self-Efficacy)", "Nilai Raport"), ("Cluster 1\n(Motivation)", "Nilai Raport"), ("Cluster 2\n(School Support)", "Nilai Raport"),
+                   ("Cluster 3\n(Parental Exp.)", "Nilai Raport"), ("Cluster 4\n(School Facilities)", "Nilai Raport"), ("Cluster 5\n(Academic Anxiety)", "Nilai Raport"),
+                   ("Cluster 6\n(Parental Inv.)", "Nilai Raport"), ("Cluster 7\n(Laziness)", "Nilai Raport")]
     },
     "Model 4: Model Lengkap (Ekologis & SRL)": {
         "deskripsi": "Model pemodelan komprehensif (Bronfenbrenner & Zimmerman). Mencakup semua jalur interaksi ekologis dan self-regulated learning.",
@@ -172,7 +192,18 @@ DAG_MODELS = {
             "Self_Efficacy": 2.500, "Learning_Motivation": 0.500, "School_Support": 0.200,
             "Parental_Expectations": -0.300, "School_Facilities": 0.700, "Academic_Anxiety": -0.500,
             "Parental_Involvement": 1.800, "Learning_Laziness": -0.900
-        }
+        },
+        "posisi": {
+            "Nilai Raport": (0, 0),
+            "Self-Efficacy": (-1, 1), "Motivation": (1, 1),
+            "School Support": (-2, 3), "Parental Inv.": (2, 3), "Parental Exp.": (0, 4),
+            "School Facilities": (-3, 1), "Academic Anxiety": (3, 1), "Laziness": (0, -2)
+        },
+        "edges": [("School Facilities", "Motivation"), ("School Facilities", "Self-Efficacy"), 
+                   ("School Support", "Motivation"), ("School Support", "Self-Efficacy"),
+                   ("Parental Inv.", "Motivation"), ("Parental Inv.", "Self-Efficacy"),
+                   ("Parental Exp.", "Academic Anxiety"), ("Academic Anxiety", "Motivation"), ("Laziness", "Motivation"),
+                   ("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport")]
     }
 }
 
@@ -948,7 +979,6 @@ elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
     st.write("Halaman ini menunjukkan alur hubungan faktor dan seberapa besar pengaruhnya terhadap nilai siswa.")
     
-    # Pilihan Model DAG
     model_terpilih = st.selectbox("Pilih Model Analisis Faktor (DAG):", list(DAG_MODELS.keys()))
     info_model = DAG_MODELS[model_terpilih]
     
@@ -963,28 +993,9 @@ elif st.session_state.current_page == "kausal":
             st.markdown(f"### Alur Hubungan Antar Faktor ({model_terpilih})")
             st.write("Gambar ini menunjukkan hubungan sebab-akibat antar variabel. Garis panah menunjukkan arah pengaruh hingga akhirnya mempengaruhi Nilai Raport.")
             
-            # Menggambar DAG (Versi visualisasi generik yang sama untuk semua model untuk mempermudah)
-            posisi = {
-                "Nilai Raport": (0, 0),
-                "Cluster 0\n(Self-Efficacy)": (-2, 2),
-                "Cluster 1\n(Motivation)": (-2, -1),
-                "Cluster 2\n(School Support)": (0, 3),
-                "Cluster 3\n(Parental Exp.)": (2, 3),
-                "Cluster 4\n(School Facilities)": (-2, -3),
-                "Cluster 5\n(Academic Anxiety)": (2, 0),
-                "Cluster 6\n(Parental Inv.)": (0, -2),
-                "Cluster 7\n(Laziness)": (2, -2)
-            }
-            edges = [
-                ("Cluster 0\n(Self-Efficacy)", "Nilai Raport"),
-                ("Cluster 1\n(Motivation)", "Nilai Raport"),
-                ("Cluster 2\n(School Support)", "Nilai Raport"),
-                ("Cluster 3\n(Parental Exp.)", "Nilai Raport"),
-                ("Cluster 4\n(School Facilities)", "Nilai Raport"),
-                ("Cluster 5\n(Academic Anxiety)", "Nilai Raport"),
-                ("Cluster 6\n(Parental Inv.)", "Nilai Raport"),
-                ("Cluster 7\n(Laziness)", "Nilai Raport"),
-            ]
+            # --- GAMBAR DAG MENGGUNAKAN POSISI & EDGES DARI MODEL YANG DIPILIH ---
+            posisi = info_model["posisi"]
+            edges = info_model["edges"]
             
             edge_x, edge_y = [], []
             for e in edges:
