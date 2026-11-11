@@ -1149,9 +1149,9 @@ elif st.session_state.current_page == "kausal":
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # --- BAGIAN YANG DIGANTI: MENJADI DAG ---
+                # --- BAGIAN YANG DIGANTI: MENJADI DAG PERSONALISASI ---
                 st.markdown(f"### 🗺️ Peta Pengaruh Faktor (Model: {model_terpilih})")
-                st.write("Gambar di bawah ini menunjukkan alur pengaruh faktor-faktor siswa ini berdasarkan model yang dipilih.")
+                st.write("Gambar di bawah ini menunjukkan alur pengaruh faktor-faktor siswa ini. **Warna node** menunjukkan posisi siswa ini dibandingkan rata-rata kelas (Hijau = Di atas rata-rata, Merah = Di bawah rata-rata, Abu-abu = Rata-rata).")
                 
                 posisi = info_model["posisi"]
                 edges = info_model["edges"]
@@ -1162,12 +1162,47 @@ elif st.session_state.current_page == "kausal":
                     edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
 
                 edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1.5, color='#888'), hoverinfo='none', mode='lines')
-                node_x, node_y, node_text = [], [], []
+                
+                node_x, node_y, node_text, node_colors = [], [], [], []
                 for node, (x, y) in posisi.items():
-                    node_x.append(x); node_y.append(y); node_text.append(node)
+                    node_x.append(x); node_y.append(y)
+                    
+                    # Default untuk Nilai Raport
+                    if node == "Nilai Raport":
+                        node_text.append(f"Nilai Raport<br>({nilai:.1f})")
+                        node_colors.append('#0f172a') # Dark color
+                    else:
+                        # Ambil nilai siswa dan baseline
+                        val_siswa = safe_float(siswa.get(node, 0))
+                        baseline = BASELINE_ASPEK.get(node, 3.0)
+                        
+                        # Tampilkan nama dan skor di node
+                        f_awam = nama_awam.get(node, node)
+                        node_text.append(f"{f_awam}<br>({val_siswa:.2f})")
+                        
+                        # Tentukan warna: Hijau jika > baseline, Merah jika < baseline
+                        if val_siswa > baseline + 0.1:
+                            node_colors.append('#10B981') # Hijau
+                        elif val_siswa < baseline - 0.1:
+                            node_colors.append('#EF5B67') # Merah
+                        else:
+                            node_colors.append('#94a3b8') # Abu-abu (rata-rata)
 
-                node_trace = go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition="top center", hoverinfo='text', marker=dict(showscale=False, color='#1f77b4', size=30, line_width=2))
-                fig_dag = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=20), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), height=450, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"))
+                node_trace = go.Scatter(
+                    x=node_x, y=node_y, 
+                    mode='markers+text', 
+                    text=node_text, 
+                    textposition="bottom center", 
+                    hoverinfo='text', 
+                    marker=dict(showscale=False, color=node_colors, size=40, line_width=2)
+                )
+                fig_dag = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(
+                    showlegend=False, hovermode='closest', 
+                    margin=dict(b=40,l=20,r=20,t=20), 
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), 
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), 
+                    height=450, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+                ))
                 st.plotly_chart(fig_dag, use_container_width=True)
                 # ---------------------------------------
 
