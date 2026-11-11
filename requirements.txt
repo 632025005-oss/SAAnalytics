@@ -1,9 +1,10 @@
 streamlit
-pymongo==4.6.1
-dnspython
 pandas
 numpy
 plotly
 openpyxl
 streamlit-option-menu
 pytz
+dnspython
+pymongo
+statsmodels
