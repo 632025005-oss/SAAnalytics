@@ -120,91 +120,104 @@ NON_LIKERT_ITEMS = {
     "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?": {"type": "number", "min": 0, "max": 10, "default": 1, "step": 1, "label": "Jumlah ekstrakurikuler"},
 }
 
+# Berdasarkan hasil mean dari Jupyter Notebook
 BASELINE_ASPEK = {
     "Self_Efficacy": 4.634, 
-    "Learning_Motivation": 2.517, 
-    "School_Support": 4.600, 
-    "Parental_Expectations": 3.450,
-    "School_Facilities": 4.880,
-    "Academic_Anxiety": 2.893, 
-    "Parental_Involvement": 4.348, 
-    "Learning_Laziness": 1.487
+    "Academic_Anxiety": 3.547, 
+    "School_Support": 4.656, 
+    "Parental_Involvement": 3.462,
+    "Learning_Motivation": 4.292
 }
 
 RATA_RATA_NILAI = 83.780
 
-# --- DEFINISI MODEL DAG & GAMBARNYA ---
+# --- DEFINISI MODEL DAG (SESUAI HASIL DO-WHY DI JUPYTER NOTEBOOK) ---
 DAG_MODELS = {
-    "Model 1: Pengaruh Langsung (Baseline)": {
-        "deskripsi": "Model paling sederhana (Input-Output). Semua faktor dianggap mempengaruhi nilai secara langsung tanpa perantara.",
+    "Model 1: Baseline Direct Effects": {
+        "deskripsi": "Model Input-Output / Black-Box. Semua konstruk mempengaruhi Prestasi secara langsung tanpa mediasi.",
         "ate": {
-            "Self_Efficacy": 1.500, "Learning_Motivation": -0.800, "School_Support": -0.500,
-            "Parental_Expectations": -0.400, "School_Facilities": 0.300, "Academic_Anxiety": 0.600,
-            "Parental_Involvement": 1.200, "Learning_Laziness": 0.500
+            "Parental_Involvement": 1.4212, "School_Support": -1.4545, 
+            "Self_Efficacy": 2.9292, "Learning_Motivation": 0.2533, 
+            "Academic_Anxiety": 1.2613
         },
         "posisi": {
-            "Nilai Raport": (0, 0),
-            "Self-Efficacy": (-3, 2), "Motivation": (-1, 2), "School Support": (1, 2), "Parental Exp.": (3, 2),
-            "School Facilities": (-3, -2), "Academic Anxiety": (-1, -2), "Parental Inv.": (1, -2), "Laziness": (3, -2)
+            "Nilai Raport": (5, 0),
+            "Parental_Involvement": (0, 2), 
+            "School_Support": (0, 1), 
+            "Self_Efficacy": (0, 0), 
+            "Learning_Motivation": (0, -1), 
+            "Academic_Anxiety": (0, -2)
         },
-        "edges": [("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport"), ("School Support", "Nilai Raport"), ("Parental Exp.", "Nilai Raport"),
-                   ("School Facilities", "Nilai Raport"), ("Academic Anxiety", "Nilai Raport"), ("Parental Inv.", "Nilai Raport"), ("Laziness", "Nilai Raport")]
+        "edges": [
+            ("Parental_Involvement", "Nilai Raport"), ("School_Support", "Nilai Raport"), 
+            ("Self_Efficacy", "Nilai Raport"), ("Learning_Motivation", "Nilai Raport"), 
+            ("Academic_Anxiety", "Nilai Raport")
+        ]
     },
-    "Model 2: Mediasi Penuh (Self-Determination)": {
-        "deskripsi": "Lingkungan sosial (orang tua, sekolah) mempengaruhi prestasi melalui mekanisme psikologis (motivasi & efikasi diri).",
+    "Model 2: Full Mediation (Self-Determination Theory)": {
+        "deskripsi": "SDT (Ryan & Deci). PI & SS mempengaruhi prestasi melalui mekanisme psikologis (LM, SE, AA).",
         "ate": {
-            "Self_Efficacy": 2.100, "Learning_Motivation": 0.900, "School_Support": -0.100,
-            "Parental_Expectations": -0.200, "School_Facilities": 0.400, "Academic_Anxiety": 0.800,
-            "Parental_Involvement": 1.600, "Learning_Laziness": 0.600
+            "Parental_Involvement": 2.1117, "School_Support": -0.1741, 
+            "Learning_Motivation": 0.6952, "Self_Efficacy": 4.0185, 
+            "Academic_Anxiety": 1.2642
         },
         "posisi": {
-            "Nilai Raport": (0, 0),
-            "Self-Efficacy": (-1, 1.5), "Motivation": (1, 1.5),
-            # PERBAIKAN: Posisi variabel di atas digeser agar tidak bertumpuk
-            "School Support": (-2.5, 3), "Parental Exp.": (0, 4), "Parental Inv.": (2.5, 3),
-            "School Facilities": (-2, -1.5), "Academic Anxiety": (2, -1.5), "Laziness": (0, -2)
+            "Nilai Raport": (5, 0.5),
+            "Parental_Involvement": (0, 1.5), "School_Support": (0, -0.5),
+            "Learning_Motivation": (2.5, 2), "Self_Efficacy": (2.5, 0.5), "Academic_Anxiety": (2.5, -1)
         },
-        "edges": [("School Support", "Self-Efficacy"), ("Parental Inv.", "Self-Efficacy"), ("Parental Exp.", "Self-Efficacy"),
-                   ("Parental Inv.", "Motivation"), ("School Support", "Motivation"),
-                   ("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport"),
-                   ("Laziness", "Nilai Raport"), ("Academic Anxiety", "Nilai Raport"), ("School Facilities", "Nilai Raport")]
+        "edges": [
+            ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"), 
+            ("Parental_Involvement", "Academic_Anxiety"), ("School_Support", "Learning_Motivation"), 
+            ("School_Support", "Self_Efficacy"), ("School_Support", "Academic_Anxiety"),
+            ("Learning_Motivation", "Nilai Raport"), ("Self_Efficacy", "Nilai Raport"), 
+            ("Academic_Anxiety", "Nilai Raport")
+        ]
     },
-    "Model 3: Kecemasan sebagai Penekan (UTAMA)": {
-        "deskripsi": "Model utama thesis (Lazarus & Bandura). Kecemasan berperan ganda: bisa memicu semangat, tapi juga bisa menekan jika berlebihan.",
+    "Model 3: Anxiety as Suppressor Pathway (UTAMA)": {
+        "deskripsi": "Lazarus & Bandura. Kecemasan (AA) bukan hanya outcome, tapi juga menekan LM & SE, serta adanya direct effect dari PI & SS.",
         "ate": {
-            "Self_Efficacy": +2.1995, "Parental_Involvement": +1.7559, "Learning_Laziness": +0.7320,
-            "Academic_Anxiety": +0.7197, "School_Facilities": +0.6182, "Parental_Expectations": -0.6987,
-            "School_Support": -1.0351, "Learning_Motivation": -1.9093
+            "Parental_Involvement": 2.1117, "School_Support": -0.1741, 
+            "Academic_Anxiety": 1.5466, "Learning_Motivation": 0.4150, 
+            "Self_Efficacy": 3.8205
         },
         "posisi": {
-            "Nilai Raport": (0, 0),
-            "Cluster 0\n(Self-Efficacy)": (-2, 2), "Cluster 1\n(Motivation)": (-2, -1),
-            "Cluster 2\n(School Support)": (0, 3), "Cluster 3\n(Parental Exp.)": (2, 3),
-            "Cluster 4\n(School Facilities)": (-2, -3), "Cluster 5\n(Academic Anxiety)": (2, 0),
-            "Cluster 6\n(Parental Inv.)": (0, -2), "Cluster 7\n(Laziness)": (2, -2)
+            "Nilai Raport": (7.5, 1.3),
+            "Parental_Involvement": (0, 2.5), "School_Support": (0, 0),
+            "Academic_Anxiety": (2.5, 1.3), "Learning_Motivation": (5, 2.5), "Self_Efficacy": (5, 0)
         },
-        "edges": [("Cluster 0\n(Self-Efficacy)", "Nilai Raport"), ("Cluster 1\n(Motivation)", "Nilai Raport"), ("Cluster 2\n(School Support)", "Nilai Raport"),
-                   ("Cluster 3\n(Parental Exp.)", "Nilai Raport"), ("Cluster 4\n(School Facilities)", "Nilai Raport"), ("Cluster 5\n(Academic Anxiety)", "Nilai Raport"),
-                   ("Cluster 6\n(Parental Inv.)", "Nilai Raport"), ("Cluster 7\n(Laziness)", "Nilai Raport")]
+        "edges": [
+            ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"), 
+            ("Parental_Involvement", "Academic_Anxiety"), ("Parental_Involvement", "Nilai Raport"),
+            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"), 
+            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Raport"),
+            ("Academic_Anxiety", "Learning_Motivation"), ("Academic_Anxiety", "Self_Efficacy"),
+            ("Academic_Anxiety", "Nilai Raport"), ("Learning_Motivation", "Nilai Raport"),
+            ("Self_Efficacy", "Nilai Raport")
+        ]
     },
-    "Model 4: Model Lengkap (Ekologis & SRL)": {
-        "deskripsi": "Model pemodelan komprehensif (Bronfenbrenner & Zimmerman). Mencakup semua jalur interaksi ekologis dan self-regulated learning.",
+    "Model 4: Full Structural (Ecological Systems)": {
+        "deskripsi": "Bronfenbrenner & Zimmerman. Model komprehensif dengan jalur PI -> SS, SE -> LM, dan LM -> AA.",
         "ate": {
-            "Self_Efficacy": 2.500, "Learning_Motivation": 0.500, "School_Support": 0.200,
-            "Parental_Expectations": -0.300, "School_Facilities": 0.700, "Academic_Anxiety": -0.500,
-            "Parental_Involvement": 1.800, "Learning_Laziness": -0.900
+            "Parental_Involvement": 1.7434, "School_Support": -0.7281, 
+            "Self_Efficacy": 3.9822, "Learning_Motivation": -0.0139, 
+            "Academic_Anxiety": 1.3408
         },
         "posisi": {
-            "Nilai Raport": (0, 0),
-            "Self-Efficacy": (-1, 1), "Motivation": (1, 1),
-            "School Support": (-2, 3), "Parental Inv.": (2, 3), "Parental Exp.": (0, 4),
-            "School Facilities": (-3, 1), "Academic Anxiety": (3, 1), "Laziness": (0, -2)
+            "Nilai Raport": (7.5, 1.2),
+            "Parental_Involvement": (0, 2), "School_Support": (2.5, 3),
+            "Self_Efficacy": (2.5, 0.5), "Learning_Motivation": (5, 2), "Academic_Anxiety": (5, 0)
         },
-        "edges": [("School Facilities", "Motivation"), ("School Facilities", "Self-Efficacy"), 
-                   ("School Support", "Motivation"), ("School Support", "Self-Efficacy"),
-                   ("Parental Inv.", "Motivation"), ("Parental Inv.", "Self-Efficacy"),
-                   ("Parental Exp.", "Academic Anxiety"), ("Academic Anxiety", "Motivation"), ("Laziness", "Motivation"),
-                   ("Self-Efficacy", "Nilai Raport"), ("Motivation", "Nilai Raport")]
+        "edges": [
+            ("Parental_Involvement", "School_Support"), ("Parental_Involvement", "Learning_Motivation"), 
+            ("Parental_Involvement", "Self_Efficacy"), ("Parental_Involvement", "Academic_Anxiety"), 
+            ("Parental_Involvement", "Nilai Raport"),
+            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"), 
+            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Raport"),
+            ("Self_Efficacy", "Learning_Motivation"), ("Self_Efficacy", "Nilai Raport"),
+            ("Learning_Motivation", "Academic_Anxiety"), ("Learning_Motivation", "Nilai Raport"),
+            ("Academic_Anxiety", "Nilai Raport")
+        ]
     }
 }
 
@@ -312,7 +325,6 @@ def render_kuesioner_siswa(nisn, is_preview=False):
             with col:
                 if cfg["type"] == "number":
                     clean_val = safe_int(val, cfg["default"]) if isinstance(cfg["default"], int) else safe_float(val, cfg["default"])
-                    # Perbaikan: hash() diganti md5 agar tidak reset saat server restart
                     non_likert_data[nama_kolom] = st.number_input(cfg["label"], min_value=cfg["min"], max_value=cfg["max"], value=clean_val, step=cfg.get("step", 1), key=f"nl_{hashlib.md5(nama_kolom.encode()).hexdigest()[:8]}")
                 else:
                     idx_val = 2
@@ -934,17 +946,14 @@ elif st.session_state.current_page == "rangkuman":
             
             nama_awam = {
                 "Self_Efficacy": "Percaya Diri", 
-                "Learning_Motivation": "Semangat Belajar", 
-                "School_Support": "Dukungan Sekolah", 
-                "Parental_Expectations": "Harapan Orang Tua",
-                "School_Facilities": "Fasilitas Sekolah",
                 "Academic_Anxiety": "Rasa Cemas", 
+                "School_Support": "Dukungan Sekolah", 
                 "Parental_Involvement": "Dukungan Orang Tua", 
-                "Learning_Laziness": "Kemalasan Belajar"
+                "Learning_Motivation": "Semangat Belajar"
             }
             
             # Menggunakan DAG 3 sebagai acuan default untuk Laporan
-            current_ate = DAG_MODELS["Model 3: Kecemasan sebagai Penekan (UTAMA)"]["ate"]
+            current_ate = DAG_MODELS["Model 3: Anxiety as Suppressor Pathway (UTAMA)"]["ate"]
             
             kontribusi = []
             for f, ate in current_ate.items():
@@ -1069,13 +1078,10 @@ elif st.session_state.current_page == "kausal":
             df_ate = pd.DataFrame({"Faktor": list(current_ate.keys()), "Pengaruh": list(current_ate.values())}).sort_values("Pengaruh")
             nama_awam = {
                 "Self_Efficacy": "Percaya Diri", 
-                "Learning_Motivation": "Semangat Belajar", 
-                "School_Support": "Dukungan Sekolah", 
-                "Parental_Expectations": "Harapan Orang Tua",
-                "School_Facilities": "Fasilitas Sekolah",
                 "Academic_Anxiety": "Rasa Cemas", 
+                "School_Support": "Dukungan Sekolah", 
                 "Parental_Involvement": "Dukungan Orang Tua", 
-                "Learning_Laziness": "Kemalasan Belajar"
+                "Learning_Motivation": "Semangat Belajar"
             }
             df_ate["Faktor"] = df_ate["Faktor"].map(nama_awam)
             
@@ -1109,13 +1115,10 @@ elif st.session_state.current_page == "kausal":
 
                 nama_awam = {
                     "Self_Efficacy": "Percaya Diri", 
-                    "Learning_Motivation": "Semangat Belajar", 
-                    "School_Support": "Dukungan Sekolah", 
-                    "Parental_Expectations": "Harapan Orang Tua",
-                    "School_Facilities": "Fasilitas Sekolah",
                     "Academic_Anxiety": "Rasa Cemas", 
+                    "School_Support": "Dukungan Sekolah", 
                     "Parental_Involvement": "Dukungan Orang Tua", 
-                    "Learning_Laziness": "Kemalasan Belajar"
+                    "Learning_Motivation": "Semangat Belajar"
                 }
 
                 current_ate = info_model["ate"]
@@ -1169,26 +1172,26 @@ elif st.session_state.current_page == "kausal":
 # ================================================================
 elif st.session_state.current_page == "prediksi":
     st.title("Simulasi Nilai Siswa")
-    st.write("Geser nilai di bawah ini untuk melihat perkiraan nilai siswa jika faktor-faktornya diubah (Berdasarkan DAG 3).")
+    st.write("Geser nilai di bawah ini untuk melihat perkiraan nilai siswa jika faktor-faktornya diubah (Berdasarkan Model 3 - DAG Utama).")
     
     c1, c2 = st.columns(2)
     with c1:
         p_se  = st.slider("Percaya Diri", 1.0, 5.0, BASELINE_ASPEK["Self_Efficacy"], 0.1)
         p_mot = st.slider("Semangat Belajar", 1.0, 5.0, BASELINE_ASPEK["Learning_Motivation"], 0.1)
         p_cem = st.slider("Rasa Cemas", 1.0, 5.0, BASELINE_ASPEK["Academic_Anxiety"], 0.1)
-        p_lazy = st.slider("Kemalasan Belajar", 1.0, 5.0, BASELINE_ASPEK["Learning_Laziness"], 0.1)
     with c2:
         p_ortu = st.slider("Dukungan Orang Tua", 1.0, 5.0, BASELINE_ASPEK["Parental_Involvement"], 0.1)
-        p_exp = st.slider("Harapan Orang Tua", 1.0, 5.0, BASELINE_ASPEK["Parental_Expectations"], 0.1)
         p_sekolah = st.slider("Dukungan Sekolah", 1.0, 5.0, BASELINE_ASPEK["School_Support"], 0.1)
-        p_fas = st.slider("Fasilitas Sekolah", 1.0, 5.0, BASELINE_ASPEK["School_Facilities"], 0.1)
         
     if st.button("Hitung Perkiraan Nilai", type="primary"):
         profil = {
-            "Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Learning_Laziness": p_lazy,
-            "Parental_Involvement": p_ortu, "Parental_Expectations": p_exp, "School_Support": p_sekolah, "School_Facilities": p_fas
+            "Self_Efficacy": p_se, 
+            "Learning_Motivation": p_mot, 
+            "Academic_Anxiety": p_cem, 
+            "Parental_Involvement": p_ortu, 
+            "School_Support": p_sekolah
         }
-        current_ate = DAG_MODELS["Model 3: Kecemasan sebagai Penekan (UTAMA)"]["ate"]
+        current_ate = DAG_MODELS["Model 3: Anxiety as Suppressor Pathway (UTAMA)"]["ate"]
         score = RATA_RATA_NILAI + sum([current_ate[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
         st.markdown(f'<div style="background:white; border-left:5px solid {warna}; padding:2rem; border-radius:8px; text-align:center; margin-top:20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"><h3 style="margin:0; color:#475569;">Hasil Perkiraan Nilai</h3><h1 style="font-size:4rem; color:{warna}; margin:10px 0;">{score:.2f}</h1><h4 style="margin:0; color:{warna};">Kategori: {kat}</h4></div>', unsafe_allow_html=True)
