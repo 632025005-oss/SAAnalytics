@@ -120,7 +120,6 @@ NON_LIKERT_ITEMS = {
     "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?": {"type": "number", "min": 0, "max": 10, "default": 1, "step": 1, "label": "Jumlah ekstrakurikuler"},
 }
 
-# Berdasarkan hasil mean dari Jupyter Notebook
 BASELINE_ASPEK = {
     "Self_Efficacy": 4.634, 
     "Academic_Anxiety": 3.547, 
@@ -1149,12 +1148,28 @@ elif st.session_state.current_page == "kausal":
                         st.info("Tidak ada faktor penghambat yang signifikan.")
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander("Lihat Detail Grafik (Opsional)"):
-                    st.write("Grafik di bawah menunjukkan perbandingan faktor siswa ini dengan rata-rata teman sekelasnya.")
-                    fig = px.bar(df_kontrib, x="Pengaruh (Poin)", y="Faktor", orientation="h", color="Pengaruh (Poin)", color_continuous_scale="RdBu", text=[f"{v:+.2f} poin" for v in df_kontrib["Pengaruh (Poin)"]])
-                    fig.update_traces(textposition="outside")
-                    fig.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", coloraxis_showscale=False)
-                    st.plotly_chart(fig, use_container_width=True)
+                
+                # --- BAGIAN YANG DIGANTI: MENJADI DAG ---
+                st.markdown(f"### 🗺️ Peta Pengaruh Faktor (Model: {model_terpilih})")
+                st.write("Gambar di bawah ini menunjukkan alur pengaruh faktor-faktor siswa ini berdasarkan model yang dipilih.")
+                
+                posisi = info_model["posisi"]
+                edges = info_model["edges"]
+                
+                edge_x, edge_y = [], []
+                for e in edges:
+                    x0, y0 = posisi[e[0]]; x1, y1 = posisi[e[1]]
+                    edge_x.extend([x0, x1, None]); edge_y.extend([y0, y1, None])
+
+                edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1.5, color='#888'), hoverinfo='none', mode='lines')
+                node_x, node_y, node_text = [], [], []
+                for node, (x, y) in posisi.items():
+                    node_x.append(x); node_y.append(y); node_text.append(node)
+
+                node_trace = go.Scatter(x=node_x, y=node_y, mode='markers+text', text=node_text, textposition="top center", hoverinfo='text', marker=dict(showscale=False, color='#1f77b4', size=30, line_width=2))
+                fig_dag = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=20), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False), height=450, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"))
+                st.plotly_chart(fig_dag, use_container_width=True)
+                # ---------------------------------------
 
                 laporan = f"LAPORAN ANALISIS FAKTOR SISWA\nNama: {nama}\nKelas: {kelas}\nNISN: {nisn}\nNilai: {nilai:.2f}\nModel: {model_terpilih}\n\nPengaruh Faktor:\n"
                 for _, row in df_kontrib.iterrows():
