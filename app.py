@@ -282,8 +282,8 @@ if st.session_state.logged_in: refresh_pengaruh()
 def render_kuesioner_siswa(nisn, is_preview=False):
     if is_preview:
         st.info(f"👁️ **Mode Pratinjau:** Anda sedang melihat tampilan kuesioner siswa dengan NISN {nisn}.")
-        if st.button("⬅️ Kembali ke Dashboard Guru"):
-            st.session_state.current_page = "monitoring"
+        if st.button("⬅️ Kembali ke Daftar Survei"): # Perbaikan teks tombol
+            st.session_state.current_page = "list_survei" # Perbaikan redirect (sebelumnya 'monitoring')
             st.session_state.preview_nisn = None
             st.rerun()
     else:
@@ -311,13 +311,14 @@ def render_kuesioner_siswa(nisn, is_preview=False):
             with col:
                 if cfg["type"] == "number":
                     clean_val = safe_int(val, cfg["default"]) if isinstance(cfg["default"], int) else safe_float(val, cfg["default"])
-                    non_likert_data[nama_kolom] = st.number_input(cfg["label"], min_value=cfg["min"], max_value=cfg["max"], value=clean_val, step=cfg.get("step", 1), key=f"nl_{hash(nama_kolom)}")
+                    # Perbaikan: hash() diganti md5 agar tidak reset saat server restart
+                    non_likert_data[nama_kolom] = st.number_input(cfg["label"], min_value=cfg["min"], max_value=cfg["max"], value=clean_val, step=cfg.get("step", 1), key=f"nl_{hashlib.md5(nama_kolom.encode()).hexdigest()[:8]}")
                 else:
                     idx_val = 2
                     if pd.notna(val):
                         try: idx_val = cfg["options"].index(int(val))
                         except: idx_val = cfg["options"].index(safe_pendidikan(val))
-                    non_likert_data[nama_kolom] = st.selectbox(cfg["label"], options=cfg["options"], index=idx_val, format_func=lambda x, L=cfg["labels"], O=cfg["options"]: L[O.index(x)], key=f"nl_{hash(nama_kolom)}")
+                    non_likert_data[nama_kolom] = st.selectbox(cfg["label"], options=cfg["options"], index=idx_val, format_func=lambda x, L=cfg["labels"], O=cfg["options"]: L[O.index(x)], key=f"nl_{hashlib.md5(nama_kolom.encode()).hexdigest()[:8]}")
         
         st.markdown("---")
         st.markdown("#### 🅱️ Bagian B — Pernyataan Psikologis")
@@ -342,7 +343,7 @@ def render_kuesioner_siswa(nisn, is_preview=False):
                 st.success("🎉 Kuesioner berhasil disimpan!")
                 refresh_pengaruh()
                 if is_preview:
-                    st.session_state.current_page = "monitoring"
+                    st.session_state.current_page = "list_survei" # Perbaikan redirect
                     st.session_state.preview_nisn = None
                 else:
                     st.session_state.siswa_login_nisn = None
@@ -683,13 +684,32 @@ elif st.session_state.current_page == "list_survei":
             st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- FITUR LOMPAT HALAMAN (PAGINATION) ---
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
             if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_survei == 1), use_container_width=True):
                 st.session_state.page_survei -= 1
                 st.rerun()
         with p2:
-            st.markdown(f"<div style='text-align:center; padding-top:10px;'>Halaman <b>{st.session_state.page_survei}</b> dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
+            c_left, c_mid, c_right = st.columns([1, 1.5, 1])
+            with c_mid:
+                col_text1, col_select, col_text2 = st.columns([1, 1, 1])
+                with col_text1:
+                    st.markdown("<div style='text-align:right; padding-top:12px;'>Halaman</div>", unsafe_allow_html=True)
+                with col_select:
+                    selected_page_survei = st.selectbox(
+                        "Lompat ke halaman", 
+                        options=list(range(1, total_pages + 1)), 
+                        index=st.session_state.page_survei - 1,
+                        label_visibility="collapsed",
+                        key="select_page_survei"
+                    )
+                    if selected_page_survei != st.session_state.page_survei:
+                        st.session_state.page_survei = selected_page_survei
+                        st.rerun()
+                with col_text2:
+                    st.markdown(f"<div style='text-align:left; padding-top:12px;'>dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
         with p3:
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True):
                 st.session_state.page_survei += 1
@@ -737,13 +757,32 @@ elif st.session_state.current_page == "list_nilai":
             st.markdown("<hr style='margin: 5px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
+        
+        # --- FITUR LOMPAT HALAMAN (PAGINATION) ---
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
             if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_nilai == 1), use_container_width=True, key="prev_nilai"):
                 st.session_state.page_nilai -= 1
                 st.rerun()
         with p2:
-            st.markdown(f"<div style='text-align:center; padding-top:10px;'>Halaman <b>{st.session_state.page_nilai}</b> dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
+            c_left, c_mid, c_right = st.columns([1, 1.5, 1])
+            with c_mid:
+                col_text1, col_select, col_text2 = st.columns([1, 1, 1])
+                with col_text1:
+                    st.markdown("<div style='text-align:right; padding-top:12px;'>Halaman</div>", unsafe_allow_html=True)
+                with col_select:
+                    selected_page_nilai = st.selectbox(
+                        "Lompat ke halaman", 
+                        options=list(range(1, total_pages + 1)), 
+                        index=st.session_state.page_nilai - 1,
+                        label_visibility="collapsed",
+                        key="select_page_nilai"
+                    )
+                    if selected_page_nilai != st.session_state.page_nilai:
+                        st.session_state.page_nilai = selected_page_nilai
+                        st.rerun()
+                with col_text2:
+                    st.markdown(f"<div style='text-align:left; padding-top:12px;'>dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
         with p3:
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_nilai == total_pages), use_container_width=True, key="next_nilai"):
                 st.session_state.page_nilai += 1
