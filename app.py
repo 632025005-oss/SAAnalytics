@@ -160,7 +160,8 @@ DAG_MODELS = {
         "posisi": {
             "Nilai Raport": (0, 0),
             "Self-Efficacy": (-1, 1.5), "Motivation": (1, 1.5),
-            "School Support": (0, 3.5), "Parental Inv.": (0, 3.5), "Parental Exp.": (0, 3.5),
+            # PERBAIKAN: Posisi variabel di atas digeser agar tidak bertumpuk
+            "School Support": (-2.5, 3), "Parental Exp.": (0, 4), "Parental Inv.": (2.5, 3),
             "School Facilities": (-2, -1.5), "Academic Anxiety": (2, -1.5), "Laziness": (0, -2)
         },
         "edges": [("School Support", "Self-Efficacy"), ("Parental Inv.", "Self-Efficacy"), ("Parental Exp.", "Self-Efficacy"),
@@ -282,8 +283,8 @@ if st.session_state.logged_in: refresh_pengaruh()
 def render_kuesioner_siswa(nisn, is_preview=False):
     if is_preview:
         st.info(f"👁️ **Mode Pratinjau:** Anda sedang melihat tampilan kuesioner siswa dengan NISN {nisn}.")
-        if st.button("⬅️ Kembali ke Daftar Survei"): # Perbaikan teks tombol
-            st.session_state.current_page = "list_survei" # Perbaikan redirect (sebelumnya 'monitoring')
+        if st.button("⬅️ Kembali ke Daftar Survei"):
+            st.session_state.current_page = "list_survei" 
             st.session_state.preview_nisn = None
             st.rerun()
     else:
@@ -343,7 +344,7 @@ def render_kuesioner_siswa(nisn, is_preview=False):
                 st.success("🎉 Kuesioner berhasil disimpan!")
                 refresh_pengaruh()
                 if is_preview:
-                    st.session_state.current_page = "list_survei" # Perbaikan redirect
+                    st.session_state.current_page = "list_survei"
                     st.session_state.preview_nisn = None
                 else:
                     st.session_state.siswa_login_nisn = None
