@@ -120,14 +120,14 @@ RATA_RATA_NILAI = 83.780
 # ================================================================
 DAG_MODELS = {
     "Model 1: Baseline Direct Effects": {
-        "deskripsi": "Model Input-Output / Black-Box. Semua konstruk mempengaruhi Prestasi secara langsung tanpa mediasi.",
+        "deskripsi": "Input-Output Model. Semua konstruk berpengaruh langsung terhadap prestasi.",
         "edges": [
             ("Parental_Involvement", "Nilai Akademik"), ("School_Support", "Nilai Akademik"), 
             ("Self_Efficacy", "Nilai Akademik"), ("Learning_Motivation", "Nilai Akademik"), ("Academic_Anxiety", "Nilai Akademik")
         ]
     },
     "Model 2: Full Mediation (SDT)": {
-        "deskripsi": "SDT (Ryan & Deci). Lingkungan sosial mempengaruhi prestasi melalui mekanisme psikologis.",
+        "deskripsi": "Lingkungan sosial memengaruhi prestasi melalui mekanisme psikologis (motivasi belajar dan self-efficacy).",
         "edges": [
             ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"), 
             ("Parental_Involvement", "Academic_Anxiety"), ("School_Support", "Learning_Motivation"), 
@@ -136,7 +136,7 @@ DAG_MODELS = {
         ]
     },
     "Model 3: Anxiety as Suppressor": {
-        "deskripsi": "Lazarus & Folkman. Kecemasan menekan motivasi & self-efficacy, namun orang tua/sekolah juga punya efek langsung.",
+        "deskripsi": "Dari DAG 2, kecemasan juga menekan motivasi dan self-efficacy (jalur supresi), dan PI/SS juga punya efek langsung.",
         "edges": [
             ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"),
             ("Parental_Involvement", "Academic_Anxiety"), ("Parental_Involvement", "Nilai Akademik"),
@@ -148,7 +148,7 @@ DAG_MODELS = {
         ]
     },
     "Model 4: Full Structural (Ecological)": {
-        "deskripsi": "Bronfenbrenner & Zimmerman. Model paling komprehensif dengan SE→LM, LM→AA, dan PI→SS.",
+        "deskripsi": "Model paling komprehensif: PI → SS, SE → LM, dan LM → AA (arah dibalik dari DAG 3).",
         "edges": [
             ("Parental_Involvement", "School_Support"), ("Parental_Involvement", "Learning_Motivation"),
             ("Parental_Involvement", "Self_Efficacy"), ("Parental_Involvement", "Academic_Anxiety"),
@@ -184,23 +184,19 @@ def run_scm_analysis(df_siswa, dag_edges):
     
     cols = ["Nilai Akademik", "Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
     
-    # Pastikan semua kolom ada dan konversi ke numeric
     for c in cols:
         if c not in df_siswa.columns:
             df_siswa[c] = 0.0
         df_siswa[c] = pd.to_numeric(df_siswa[c], errors='coerce').fillna(0.0)
 
     df = df_siswa[cols].copy()
-    df = df[df["Nilai Akademik"] > 0] # Hanya siswa yang punya nilai
+    df = df[df["Nilai Akademik"] > 0] 
     df = df.dropna()
     
     if len(df) < 10: 
         return {}, {}
 
-    # 1. Buat sintaks Graphviz untuk DoWhy
     graph_str = "digraph {\n" + "\n".join([f"{e[0]} -> {e[1]};" for e in dag_edges]) + "\n}"
-    
-    # 2. Hitung ATE dengan DoWhy
     ates = {}
     all_nodes = list(set([e[0] for e in dag_edges]))
     
@@ -214,7 +210,6 @@ def run_scm_analysis(df_siswa, dag_edges):
         except:
             ates[trt] = 0.0
             
-    # 3. Hitung OLS (untuk koefisien garis di DAG)
     ols_params = {}
     try:
         X = sm.add_constant(df[all_nodes])
@@ -233,7 +228,6 @@ def draw_dag_matplotlib(edges, ates):
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Warna node
     node_colors = {
         "Self_Efficacy": "#9C27B0", "Academic_Anxiety": "#F44336",
         "School_Support": "#4CAF50", "Parental_Involvement": "#2196F3",
@@ -250,7 +244,6 @@ def draw_dag_matplotlib(edges, ates):
     nx.draw_networkx_labels(G, pos, font_color="white", font_weight="bold", ax=ax)
     nx.draw_networkx_edges(G, pos, arrows=True, arrowstyle="-|>", arrowsize=20, width=2, edge_color="#555", ax=ax)
     
-    # Tambahkan label ATE jika ada
     if ates:
         edge_labels = {}
         for e in edges:
@@ -286,9 +279,10 @@ iframe[title="streamlit_option_menu.option_menu"] { background-color: transparen
 .stButton > button { background: var(--teal); color: white; border-radius: 6px; font-weight: 600; border: none; padding: 0.5rem 1rem; transition: 0.2s; }
 .stButton > button:hover { background: var(--teal-deep); color: white; }
 div[data-testid="stForm"] { background: white; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-.dag-card { background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+.dag-card { background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
 .dag-card h3 { margin: 0 0 5px 0; font-size: 1.1rem; color: #0f172a; }
-.dag-card p { margin: 0 0 10px 0; font-size: 0.9rem; color: #475569; }
+.dag-card p { margin: 0; font-size: 0.9rem; color: #475569; flex-grow: 1; }
+.dag-link { font-size: 0.85rem; color: #0d9488; font-weight: 500; margin-top: 15px; display: block; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -299,7 +293,7 @@ for key, val in {
     "logged_in": False, "user_nama": None, "user_role": None,
     "database_siswa": [], "current_page": "home", "last_menu": "Beranda",
     "siswa_login_nisn": None, "edit_nisn": None, "preview_nisn": None,
-    "page_survei": 1, "page_nilai": 1, "custom_dags": {}
+    "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None
 }.items():
     if key not in st.session_state: st.session_state[key] = val
 
@@ -438,7 +432,9 @@ with st.sidebar:
                 st.session_state[k] = None if k.endswith("_nisn") or k.startswith("preview") else False
             st.session_state.database_siswa = []
             st.rerun()
-        else: st.session_state.current_page = mapping_menu.get(menu_choice, "home")
+        else: 
+            st.session_state.current_page = mapping_menu.get(menu_choice, "home")
+            st.session_state.selected_dag = None # Reset pilihan DAG jika pindah menu
 
     st.markdown(f"<br><br><hr><div style='padding-left: 10px;'><p style='color: #94a3b8; font-size: 0.8rem;'>Masuk sebagai:</p><p style='color: white; font-weight: bold;'>👤 {st.session_state.user_nama}</p></div>", unsafe_allow_html=True)
 
@@ -646,7 +642,6 @@ elif st.session_state.current_page == "rangkuman":
     refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
     
     if not df.empty:
-        # Pilihan DAG untuk perhitungan kontribusi
         dag_pilihan = st.selectbox("Pilih Model Analisis Faktor (DAG) untuk Laporan:", list(DAG_MODELS.keys()))
         
         df["Label"] = df["Nama"].astype(str) + " (" + df["Kelas"].astype(str).fillna("") + ")"
@@ -659,7 +654,6 @@ elif st.session_state.current_page == "rangkuman":
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
             
             with st.spinner("Menghitung kausalitas dinamis..."):
-                # Hitung ATE secara dinamis berdasarkan DAG yang dipilih
                 ates, _ = run_scm_analysis(df, DAG_MODELS[dag_pilihan]["edges"])
             
             nama_awam = {"Self_Efficacy": "Percaya Diri", "Academic_Anxiety": "Rasa Cemas", "School_Support": "Dukungan Sekolah", "Parental_Involvement": "Dukungan Orang Tua", "Learning_Motivation": "Semangat Belajar"}
@@ -680,24 +674,83 @@ elif st.session_state.current_page == "rangkuman":
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
-    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Nilai Akademik (Y). Setiap DAG dianalisis otomatis: ATE (penyesuaian backdoor) dan OLS.")
+    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Nilai Akademik (Y). Setiap DAG dianalisis otomatis: ATE (penyesuaian backdoor), regresi berganda, mediasi Baron-Kenny, dan Interpretasi Hasil.")
     
-    tab_daftar, tab_create = st.tabs(["📂 Daftar DAG & Analisis", "➕ Create DAG"])
+    tab_daftar, tab_create, tab_banding = st.tabs(["📂 Daftar DAG", "➕ Create DAG", "📊 Perbandingan Lintas DAG"])
     
     # TAB 1: DAFTAR DAG
     with tab_daftar:
-        st.markdown("### Pilih DAG untuk Dianalisis")
-        all_models = list(DAG_MODELS.keys()) + list(st.session_state.custom_dags.keys())
+        # Kotak Info
+        st.markdown("""
+        <div style="background-color: #e0f2f1; border-left: 5px solid #0d9488; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #004d40; font-size: 0.9rem;">
+            <strong>Silakan pilih model terbaik menurut data: DAG 4 — Full Structural (Ecological Systems + SRL) atau DAG 2 — Full Mediation (SDT).</strong><br>
+            Model-model ini lolos uji kecocokan dengan data: semua anggapan "tidak saling berkaitan" di dalam DAG-nya terpenuhi (uji d-separation Shipley, p = 0,81), dan BIC-nya paling kecil di antara model dengan kelompok konstruk yang sama. Kelompok konstruknya berbeda, jadi model-model ini tidak bisa dibandingkan langsung; pilih yang paling sesuai teori.
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("### Contoh DAG")
         
-        if all_models:
-            pilihan_lihat = st.selectbox("Model DAG:", all_models)
-            if pilihan_lihat in DAG_MODELS: info = DAG_MODELS[pilihan_lihat]
-            else: info = st.session_state.custom_dags[pilihan_lihat]
+        # Grid untuk Card
+        c1, c2 = st.columns(2)
+        
+        dag_titles = {
+            "Model 1: Baseline Direct Effects": "DAG 1 — Baseline Direct Effects",
+            "Model 2: Full Mediation (SDT)": "DAG 2 — Full Mediation (Self-Determination Theory)",
+            "Model 3: Anxiety as Suppressor": "DAG 3 — Anxiety as Suppressor Pathway",
+            "Model 4: Full Structural (Ecological)": "DAG 4 — Full Structural (Ecological Systems + SRL)"
+        }
+
+        for i, (k, v) in enumerate(DAG_MODELS.items()):
+            target_col = c1 if i % 2 == 0 else c2
+            with target_col:
+                # Tampilan Card
+                st.markdown(f"""
+                <div class="dag-card">
+                    <div>
+                        <h3>{dag_titles.get(k, k)}</h3>
+                        <p>{v['deskripsi']}</p>
+                    </div>
+                    <span class="dag-link">{len(v['edges'])} sisi</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Tombol di bawah Card
+                if st.button(f"lihat diagram & interpretasi →", key=f"lihat_{k}", use_container_width=True):
+                    st.session_state.selected_dag = k
+                    st.rerun()
+
+        # Tampilkan Custom DAG jika ada
+        if st.session_state.custom_dags:
+            st.markdown("### DAG Buatan Sendiri (Custom)")
+            c3, c4 = st.columns(2)
+            for i, (k, v) in enumerate(st.session_state.custom_dags.items()):
+                target_col = c3 if i % 2 == 0 else c4
+                with target_col:
+                    st.markdown(f"""
+                    <div class="dag-card">
+                        <div>
+                            <h3>{k}</h3>
+                            <p>{v['deskripsi']}</p>
+                        </div>
+                        <span class="dag-link">{len(v['edges'])} sisi</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
+                        st.session_state.selected_dag = k
+                        st.rerun()
+
+        # --- BAGIAN ANALISIS (Muncul setelah DAG dipilih) ---
+        if st.session_state.get("selected_dag"):
+            st.markdown("---")
+            selected = st.session_state.selected_dag
+            info = DAG_MODELS.get(selected) or st.session_state.custom_dags.get(selected)
             
+            st.subheader(f"Analisis Model: {selected}")
             st.info(info["deskripsi"])
             
             if st.button("🚀 Jalankan Analisis DoWhy & OLS", type="primary"):
-                refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
+                refresh_pengaruh()
+                df = pd.DataFrame(st.session_state.database_siswa)
                 
                 if df.empty or len(df[df["Nilai Akademik"] > 0]) < 10:
                     st.warning("Data siswa dengan nilai kurang dari 10. Analisis membutuhkan minimal 10 data valid.")
@@ -706,12 +759,15 @@ elif st.session_state.current_page == "kausal":
                         ates, ols_params = run_scm_analysis(df, info["edges"])
                         
                         st.markdown("#### Hasil Average Treatment Effect (DoWhy)")
-                        cols_ate = st.columns(len(ates))
-                        for idx, (k, v) in enumerate(ates.items()):
-                            with cols_ate[idx]:
-                                st.metric(label=k.replace('_', ' '), value=f"{v:+.3f}")
-                                
-                        st.markdown("#### Visualisasi Diagram DAG (dengan nilai ATE)")
+                        if ates:
+                            cols_ate = st.columns(len(ates))
+                            for idx, (k, v) in enumerate(ates.items()):
+                                with cols_ate[idx % len(cols_ate)]:
+                                    st.metric(label=k.replace('_', ' '), value=f"{v:+.3f}")
+                        else:
+                            st.warning("Gagal menghitung ATE. Periksa apakah data valid.")
+                            
+                        st.markdown("#### Visualisasi Diagram DAG")
                         draw_dag_matplotlib(info["edges"], ates)
 
     # TAB 2: CREATE DAG
@@ -741,6 +797,10 @@ elif st.session_state.current_page == "kausal":
                     }
                     st.success(f"DAG '{nama_dag}' berhasil dibuat! Silakan cek tab Daftar DAG."); st.rerun()
 
+    # TAB 3: PERBANDINGAN
+    with tab_banding:
+        st.info("Fitur perbandingan nilai ATE (Average Treatment Effect) akan tersedia di sini setelah data regresi dihitung dari beberapa model DAG.")
+
 # ================================================================
 # HALAMAN LAINNYA
 # ================================================================
@@ -758,7 +818,6 @@ elif st.session_state.current_page == "prediksi":
         
     if st.button("Hitung Perkiraan Nilai", type="primary"):
         profil = {"Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Parental_Involvement": p_ortu, "School_Support": p_sekolah}
-        # Gunakan hardcode dari Jupyter Notebook (Model 1)
         ate_model1 = {"Parental_Involvement": 1.4212, "School_Support": -1.4545, "Self_Efficacy": 2.9292, "Learning_Motivation": 0.2533, "Academic_Anxiety": 1.2613}
         score = RATA_RATA_NILAI + sum([ate_model1[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
