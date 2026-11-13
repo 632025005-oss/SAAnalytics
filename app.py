@@ -115,7 +115,7 @@ for construct, items in KONSTRUK_ITEMS.items():
         RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct, "reverse": item in REVERSE_ITEMS})
 
 # ================================================================
-# ★ 4 MODEL DAG & NILAI ATE (Dari Jupyter Notebook)
+# ★ 4 MODEL DAG & NILAI ATE
 # ================================================================
 DAG_MODELS = {
     "Model 1: Baseline Direct Effects": {
@@ -781,7 +781,6 @@ elif st.session_state.current_page == "kausal":
             elif selected in st.session_state.custom_dags:
                 info = st.session_state.custom_dags[selected]
                 st.markdown(f"### Visualisasi: {selected}")
-                # Generate Graphviz dynamically based on edges
                 dot = """digraph G {
                     rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
                     node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
@@ -830,21 +829,19 @@ elif st.session_state.current_page == "kausal":
         
         # Data Editor Dinamis
         edited_df = st.data_editor(
-            df_mapping[["kode", "fitur", "Masuk bagian", "reverse"]],
+            df_mapping[["kode", "fitur", "Masuk bagian"]],
             column_config={
                 "kode": st.column_config.TextColumn("Kode", disabled=True, width="small"),
                 "fitur": st.column_config.TextColumn("Fitur X (butir Likert)", disabled=True, width="large"),
-                "Masuk bagian": st.column_config.SelectboxColumn("Masuk bagian", options=nodes_input if nodes_input else ["Self_Efficacy"], required=True),
-                "reverse": st.column_config.CheckboxColumn("Dibalik (6-x)")
+                "Masuk bagian": st.column_config.SelectboxColumn("Masuk bagian", options=nodes_input if nodes_input else ["Belum ada bagian"], required=True)
             },
-            hide_index=True, use_container_width=True
+            hide_index=True, use_container_width=True, key="dag_mapping_editor"
         )
         
         if st.button("Create DAG", type="primary"):
             if not nama_dag or len(nodes_input) < 1: 
                 st.error("Isi Nama DAG dan minimal satu Nama Bagian (Node).")
             else:
-                # Asumsi struktur: Setiap Node yang didefinisikan akan memiliki efek langsung ke Nilai Akademik
                 new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
                 st.session_state.custom_dags[nama_dag] = {
                     "deskripsi": f"Model buatan guru (Dibuat: {datetime.now().strftime('%Y-%m-%d')}).",
