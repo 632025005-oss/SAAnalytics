@@ -108,6 +108,12 @@ BASELINE_ASPEK = {
 }
 RATA_RATA_NILAI = 83.780
 
+# Menyiapkan list pertanyaan untuk Data Editor
+RAW_QUESTIONS = []
+for construct, items in KONSTRUK_ITEMS.items():
+    for idx, item in enumerate(items):
+        RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct, "reverse": item in REVERSE_ITEMS})
+
 # ================================================================
 # ★ 4 MODEL DAG & NILAI ATE (Dari Jupyter Notebook)
 # ================================================================
@@ -580,9 +586,7 @@ elif st.session_state.current_page == "kausal":
         """, unsafe_allow_html=True)
 
         st.markdown("### Contoh DAG")
-        
         c1, c2 = st.columns(2)
-        
         dag_titles = {
             "Model 1: Baseline Direct Effects": "DAG 1 — Baseline Direct Effects",
             "Model 2: Full Mediation (SDT)": "DAG 2 — Full Mediation (Self-Determination Theory)",
@@ -602,17 +606,36 @@ elif st.session_state.current_page == "kausal":
                     <span class="dag-link">{v['edges']} sisi</span>
                 </div>
                 """, unsafe_allow_html=True)
-                
                 if st.button(f"lihat diagram & interpretasi →", key=f"lihat_{k}", use_container_width=True):
                     st.session_state.selected_dag = k
                     st.rerun()
+
+        # Tampilkan Custom DAG
+        if st.session_state.custom_dags:
+            st.markdown("### DAG Buatan Guru (Kustom)")
+            c3, c4 = st.columns(2)
+            for i, (k, v) in enumerate(st.session_state.custom_dags.items()):
+                target_col = c3 if i % 2 == 0 else c4
+                with target_col:
+                    st.markdown(f"""
+                    <div class="dag-card">
+                        <div>
+                            <h3>{k}</h3>
+                            <p>{v['deskripsi']}</p>
+                        </div>
+                        <span class="dag-link">{len(v['edges'])} sisi</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
+                        st.session_state.selected_dag = k
+                        st.rerun()
 
         # --- BAGIAN VISUALISASI (Muncul setelah DAG dipilih) ---
         if st.session_state.get("selected_dag"):
             st.markdown("---")
             selected = st.session_state.selected_dag
             
-            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model (Bahasa Awam)
+            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model
             if selected == "Model 1: Baseline Direct Effects":
                 dot = """digraph G {
                     rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
@@ -633,10 +656,10 @@ elif st.session_state.current_page == "kausal":
                 }"""
                 interpretasi = """
                 **Panduan Membaca Diagram:**
-                *   Arah panah menunjukkan arah pengaruh (Faktor A memengaruhi Faktor B).
+                *   Arah panah menunjukkan arah pengaruh.
                 *   **Angka Positif (+)** berarti jika faktor tersebut meningkat, nilai siswa juga naik.
                 *   **Angka Negatif (-)** berarti jika faktor tersebut meningkat, nilai siswa justru turun.
-                *   Garis tebal dan tanda bintang `***` menunjukkan pengaruh yang sangat kuat dan nyata. Garis putus-putus `ns` berarti pengaruhnya tidak terlalu terlihat secara langsung.
+                *   Garis tebal `***` menunjukkan pengaruh yang sangat kuat. Garis putus-putus `ns` berarti pengaruhnya tidak terlihat secara langsung.
 
                 **Interpretasi DAG 1 (Sederhananya):**
                 *   **Percaya Diri (Self Efficacy)** punya angka tertinggi (+3.94). Ini adalah faktor terkuat yang membuat nilai siswa naik. Anak yang yakin pada kemampuannya cenderung mendapat nilai bagus.
@@ -669,9 +692,8 @@ elif st.session_state.current_page == "kausal":
                 }"""
                 interpretasi = """
                 **Panduan Membaca Diagram:**
-                *   Arah panah menunjukkan arah pengaruh (Faktor A memengaruhi Faktor B).
-                *   **Angka Positif (+)** berarti saling menguatkan/menaikkan.
-                *   Garis tebal dan tanda bintang `***` menunjukkan pengaruh yang sangat kuat dan nyata.
+                *   Arah panah menunjukkan arah pengaruh. Angka Positif (+) berarti saling menguatkan/menaikkan.
+                *   Garis tebal `***` menunjukkan pengaruh yang sangat kuat dan nyata.
 
                 **Interpretasi DAG 2 (Sederhananya):**
                 *   Model ini menunjukkan bahwa **Dukungan Orang Tua** dan **Dukungan Sekolah** tidak bisa langsung menaikkan nilai siswa. 
@@ -710,8 +732,7 @@ elif st.session_state.current_page == "kausal":
                 }"""
                 interpretasi = """
                 **Panduan Membaca Diagram:**
-                *   **Angka Positif (+)** berarti saling menguatkan/menaikkan.
-                *   **Angka Negatif (-)** berarti menurunkan.
+                *   Angka Positif (+) berarti saling menguatkan/menaikkan. Angka Negatif (-) berarti menurunkan.
 
                 **Interpretasi DAG 3 (Sederhananya):**
                 *   Biasanya orang tua mengira rasa cemas itu buruk. Tapi di data ini, **Rasa Cemas (Academic Anxiety)** angkanya positif (+0.20). 
@@ -755,47 +776,95 @@ elif st.session_state.current_page == "kausal":
                 *   **Percaya Diri ke Semangat Belajar (+0.43)**: Anak yang yakin pada kemampuannya akan otomatis punya semangat belajar yang tinggi.
                 *   **Semangat Belajar ke Rasa Cemas (+0.45)**: Anak yang semangat belajarnya tinggi justru sedikit cemas saat ujian. Ini cemas yang sehat (takut dapat nilai jelek makanya belajar mati-matian), bukan cemas yang bikin panik.
                 """
-            else:
-                st.warning("Visualisasi untuk DAG kustom belum tersedia. Silakan gunakan 4 model utama.")
-                dot = None
-                interpretasi = ""
-
-            if dot:
-                st.markdown(f"### Visualisasi: {dag_titles.get(selected, selected)}")
+            
+            # Visualisasi Custom DAG
+            elif selected in st.session_state.custom_dags:
+                info = st.session_state.custom_dags[selected]
+                st.markdown(f"### Visualisasi: {selected}")
+                # Generate Graphviz dynamically based on edges
+                dot = """digraph G {
+                    rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
+                    node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
+                    edge [fontname="Helvetica", fontsize=10];
+                """
+                dot += 'Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];\n'
+                for e in info["edges"]:
+                    dot += f'"{e[0]}" [label="{e[0].replace("_", " ")}", fillcolor="#0f766e"];\n'
+                    dot += f'"{e[0]}" -> "{e[1]}";\n'
+                dot += '}'
+                
                 st.graphviz_chart(dot, use_container_width=True)
-                st.markdown("---")
-                st.markdown(f"### Penjelasan & Interpretasi Hasil")
-                st.info(interpretasi)
+                st.info("Interpretasi otomatis untuk DAG kustom belum tersedia. DAG ini dibuat berdasarkan pemetaan pertanyaan yang Anda lakukan. Semua node diasumsikan memiliki efek langsung ke Prestasi.")
+
+            if 'dot' in locals() and dot:
+                if not (selected in st.session_state.custom_dags):
+                    st.markdown(f"### Visualisasi: {dag_titles.get(selected, selected)}")
+                    st.graphviz_chart(dot, use_container_width=True)
+                    st.markdown("---")
+                    st.markdown(f"### Penjelasan & Interpretasi Hasil")
+                    st.info(interpretasi)
+                else:
+                    st.markdown("---")
+                    st.markdown(f"### Penjelasan & Interpretasi Hasil")
+                    st.info("DAG ini merupakan model buatan Anda sendiri. Silakan gunakan tab 'Perbandingan Lintas DAG' untuk melihat perbandingan jumlah sisi antar model.")
 
     # TAB 2: CREATE DAG
     with tab_create:
-        st.info("Buat DAG kustom. Model akan ditambahkan ke daftar dan dapat dianalisis secara otomatis.")
+        st.info("Kelompokkan fitur X menjadi beberapa bagian (misal A, B, C, D atau nama konstruk). 2) Pilih Grog untuk membuat DAG, atau tulis sintaks sendiri. Jawaban harus lolos validasi: digraph `{ A -> B; }`, hanya node yang Anda definisikan + `Prestasi_Siswa`, tanpa siklus, dan semua node punya jalur ke outcome.")
         
-        with st.form("form_create_dag"):
-            nama_dag = st.text_input("Nama DAG", placeholder="mis. Model lingkungan → psikologis → prestasi")
-            st.markdown("### Pilih Node yang Digunakan (Maks 6)")
-            
-            cols = st.columns(3); nodes_input = []
-            defaults = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation", "Nilai Akademik"]
-            for i in range(6):
-                with cols[i % 3]:
-                    val = st.text_input(f"Node {i+1}", value=defaults[i], key=f"node_{i}")
-                    if val.strip(): nodes_input.append(val.strip())
-            
-            if st.form_submit_button("Create DAG (Direct Effects Only)", type="primary"):
-                if not nama_dag or len(nodes_input) < 1: 
-                    st.error("Isi Nama DAG dan minimal satu Node.")
-                else:
-                    new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
-                    st.session_state.custom_dags[nama_dag] = {
-                        "deskripsi": f"Model kustom dibuat: {datetime.now().strftime('%Y-%m-%d')}.",
-                        "edges": new_edges
-                    }
-                    st.success(f"DAG '{nama_dag}' berhasil dibuat! Silakan cek tab Daftar DAG."); st.rerun()
+        nama_dag = st.text_input("Nama DAG", placeholder="mis. Model lingkungan → psikologis → prestasi")
+        
+        st.markdown("### Nama bagian (node), maks. 8")
+        st.caption("Huruf/angka/underscore saja. Bagian kosong diabaikan.")
+        
+        cols = st.columns(4)
+        nodes_input = []
+        defaults = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation", "", "", ""]
+        for i in range(8):
+            with cols[i % 4]:
+                val = st.text_input(f"Bagian {i+1}", value=defaults[i], key=f"node_{i}", label_visibility="collapsed", placeholder=f"Bagian {i+1}")
+                if val.strip(): nodes_input.append(val.strip())
+        
+        df_mapping = pd.DataFrame(RAW_QUESTIONS)
+        df_mapping["Masuk bagian"] = df_mapping["default"]
+        
+        # Data Editor Dinamis
+        edited_df = st.data_editor(
+            df_mapping[["kode", "fitur", "Masuk bagian", "reverse"]],
+            column_config={
+                "kode": st.column_config.TextColumn("Kode", disabled=True, width="small"),
+                "fitur": st.column_config.TextColumn("Fitur X (butir Likert)", disabled=True, width="large"),
+                "Masuk bagian": st.column_config.SelectboxColumn("Masuk bagian", options=nodes_input if nodes_input else ["Self_Efficacy"], required=True),
+                "reverse": st.column_config.CheckboxColumn("Dibalik (6-x)")
+            },
+            hide_index=True, use_container_width=True
+        )
+        
+        if st.button("Create DAG", type="primary"):
+            if not nama_dag or len(nodes_input) < 1: 
+                st.error("Isi Nama DAG dan minimal satu Nama Bagian (Node).")
+            else:
+                # Asumsi struktur: Setiap Node yang didefinisikan akan memiliki efek langsung ke Nilai Akademik
+                new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
+                st.session_state.custom_dags[nama_dag] = {
+                    "deskripsi": f"Model buatan guru (Dibuat: {datetime.now().strftime('%Y-%m-%d')}).",
+                    "edges": new_edges,
+                    "mapping": edited_df.to_dict('records')
+                }
+                st.success(f"DAG '{nama_dag}' berhasil dibuat dan ditambahkan ke daftar!"); st.rerun()
 
     # TAB 3: PERBANDINGAN
     with tab_banding:
-        st.info("Fitur perbandingan nilai ATE (Average Treatment Effect) akan tersedia di sini setelah data regresi dihitung dari beberapa model DAG.")
+        st.markdown("### Perbandingan Semua Model DAG")
+        st.write("Tabel ini merangkum semua model DAG (bawaan sistem dan buatan guru) yang tersedia di aplikasi.")
+        
+        summary_data = []
+        for k, v in DAG_MODELS.items():
+            summary_data.append({"Nama Model": k, "Tipe": "Bawaan (Sistem)", "Jumlah Sisi": v["edges"]})
+        for k, v in st.session_state.custom_dags.items():
+            summary_data.append({"Nama Model": k, "Tipe": "Kustom (Guru)", "Jumlah Sisi": len(v["edges"])})
+            
+        st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
 
 # ================================================================
 # HALAMAN LAINNYA
