@@ -12,13 +12,6 @@ import math
 from openpyxl import Workbook
 from streamlit_option_menu import option_menu
 import pytz
-import statsmodels.api as sm
-import networkx as nx
-import matplotlib.pyplot as plt
-from dowhy import CausalModel
-import warnings
-
-warnings.filterwarnings("ignore")
 
 from db_storage import (
     load_users, save_users, login_siswa, simpan_survei_siswa, 
@@ -116,49 +109,28 @@ BASELINE_ASPEK = {
 RATA_RATA_NILAI = 83.780
 
 # ================================================================
-# ★ 4 MODEL DAG (Sesuai Jupyter Notebook)
+# ★ 4 MODEL DAG & NILAI ATE (Dari Jupyter Notebook)
 # ================================================================
 DAG_MODELS = {
     "Model 1: Baseline Direct Effects": {
         "deskripsi": "Input-Output Model. Semua konstruk berpengaruh langsung terhadap prestasi.",
-        "edges": [
-            ("Parental_Involvement", "Nilai Akademik"), ("School_Support", "Nilai Akademik"), 
-            ("Self_Efficacy", "Nilai Akademik"), ("Learning_Motivation", "Nilai Akademik"), ("Academic_Anxiety", "Nilai Akademik")
-        ]
+        "edges": 5,
+        "ate": {"Parental_Involvement": 1.42, "School_Support": -1.45, "Self_Efficacy": 2.93, "Learning_Motivation": 0.25, "Academic_Anxiety": 1.26}
     },
     "Model 2: Full Mediation (SDT)": {
         "deskripsi": "Lingkungan sosial memengaruhi prestasi melalui mekanisme psikologis (motivasi belajar dan self-efficacy).",
-        "edges": [
-            ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"), 
-            ("Parental_Involvement", "Academic_Anxiety"), ("School_Support", "Learning_Motivation"), 
-            ("School_Support", "Self_Efficacy"), ("School_Support", "Academic_Anxiety"),
-            ("Learning_Motivation", "Nilai Akademik"), ("Self_Efficacy", "Nilai Akademik"), ("Academic_Anxiety", "Nilai Akademik")
-        ]
+        "edges": 9,
+        "ate": {"Parental_Involvement": 2.11, "School_Support": -0.17, "Self_Efficacy": 4.02, "Learning_Motivation": 0.70, "Academic_Anxiety": 1.26}
     },
     "Model 3: Anxiety as Suppressor": {
         "deskripsi": "Dari DAG 2, kecemasan juga menekan motivasi dan self-efficacy (jalur supresi), dan PI/SS juga punya efek langsung.",
-        "edges": [
-            ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"),
-            ("Parental_Involvement", "Academic_Anxiety"), ("Parental_Involvement", "Nilai Akademik"),
-            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"),
-            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Akademik"),
-            ("Academic_Anxiety", "Learning_Motivation"), ("Academic_Anxiety", "Self_Efficacy"),
-            ("Academic_Anxiety", "Nilai Akademik"), ("Learning_Motivation", "Nilai Akademik"),
-            ("Self_Efficacy", "Nilai Akademik")
-        ]
+        "edges": 13,
+        "ate": {"Parental_Involvement": 2.11, "School_Support": -0.17, "Self_Efficacy": 3.82, "Learning_Motivation": 0.42, "Academic_Anxiety": 1.55}
     },
     "Model 4: Full Structural (Ecological)": {
         "deskripsi": "Model paling komprehensif: PI → SS, SE → LM, dan LM → AA (arah dibalik dari DAG 3).",
-        "edges": [
-            ("Parental_Involvement", "School_Support"), ("Parental_Involvement", "Learning_Motivation"),
-            ("Parental_Involvement", "Self_Efficacy"), ("Parental_Involvement", "Academic_Anxiety"),
-            ("Parental_Involvement", "Nilai Akademik"),
-            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"),
-            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Akademik"),
-            ("Self_Efficacy", "Learning_Motivation"), ("Self_Efficacy", "Nilai Akademik"),
-            ("Learning_Motivation", "Academic_Anxiety"), ("Learning_Motivation", "Nilai Akademik"),
-            ("Academic_Anxiety", "Nilai Akademik")
-        ]
+        "edges": 14,
+        "ate": {"Parental_Involvement": 1.74, "School_Support": -0.73, "Self_Efficacy": 3.98, "Learning_Motivation": -0.01, "Academic_Anxiety": 1.34}
     }
 }
 
@@ -176,84 +148,6 @@ def kategori_nilai(n):
     if n >= 84: return "Baik", "#2563EB"
     if n >= 80: return "Cukup", "#F0B900"
     return "Perlu Perhatian", "#EF5B67"
-
-def run_scm_analysis(df_siswa, dag_edges):
-    """Menjalankan DoWhy untuk menghitung ATE dan OLS untuk koefisien jalur."""
-    if df_siswa.empty: 
-        return {}, {}
-    
-    cols = ["Nilai Akademik", "Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
-    
-    for c in cols:
-        if c not in df_siswa.columns:
-            df_siswa[c] = 0.0
-        df_siswa[c] = pd.to_numeric(df_siswa[c], errors='coerce').fillna(0.0)
-
-    df = df_siswa[cols].copy()
-    df = df[df["Nilai Akademik"] > 0] 
-    df = df.dropna()
-    
-    if len(df) < 10: 
-        return {}, {}
-
-    graph_str = "digraph {\n" + "\n".join([f"{e[0]} -> {e[1]};" for e in dag_edges]) + "\n}"
-    ates = {}
-    all_nodes = list(set([e[0] for e in dag_edges]))
-    
-    for trt in all_nodes:
-        if trt == "Nilai Akademik": continue
-        try:
-            model = CausalModel(data=df, treatment=trt, outcome="Nilai Akademik", graph=graph_str)
-            identified = model.identify_effect(proceed_when_unidentifiable=True)
-            est = model.estimate_effect(identified, method_name="backdoor.linear_regression")
-            ates[trt] = float(est.value)
-        except:
-            ates[trt] = 0.0
-            
-    ols_params = {}
-    try:
-        X = sm.add_constant(df[all_nodes])
-        res = sm.OLS(df["Nilai Akademik"], X).fit()
-        for node in all_nodes:
-            ols_params[node] = float(res.params.get(node, 0))
-    except:
-        pass
-        
-    return ates, ols_params
-
-def draw_dag_matplotlib(edges, ates):
-    """Menggambar DAG menggunakan NetworkX & Matplotlib"""
-    G = nx.DiGraph()
-    G.add_edges_from([(e[0], e[1]) for e in edges])
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    node_colors = {
-        "Self_Efficacy": "#9C27B0", "Academic_Anxiety": "#F44336",
-        "School_Support": "#4CAF50", "Parental_Involvement": "#2196F3",
-        "Learning_Motivation": "#FF9800", "Nilai Akademik": "#009688"
-    }
-    colors = [node_colors.get(node, "#888") for node in G.nodes()]
-    
-    try:
-        pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
-    except:
-        pos = nx.spring_layout(G, seed=42)
-        
-    nx.draw_networkx_nodes(G, pos, node_color=colors, node_size=3000, alpha=0.9, ax=ax)
-    nx.draw_networkx_labels(G, pos, font_color="white", font_weight="bold", ax=ax)
-    nx.draw_networkx_edges(G, pos, arrows=True, arrowstyle="-|>", arrowsize=20, width=2, edge_color="#555", ax=ax)
-    
-    if ates:
-        edge_labels = {}
-        for e in edges:
-            if e[0] in ates:
-                edge_labels[e] = f"{ates[e[0]]:+.2f}"
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=9, ax=ax, bbox=dict(alpha=0.7, edgecolor='none'))
-        
-    ax.axis("off")
-    st.pyplot(fig)
-    plt.close(fig)
 
 # ================================================================
 # PAGE CONFIG & CSS
@@ -434,7 +328,7 @@ with st.sidebar:
             st.rerun()
         else: 
             st.session_state.current_page = mapping_menu.get(menu_choice, "home")
-            st.session_state.selected_dag = None # Reset pilihan DAG jika pindah menu
+            st.session_state.selected_dag = None 
 
     st.markdown(f"<br><br><hr><div style='padding-left: 10px;'><p style='color: #94a3b8; font-size: 0.8rem;'>Masuk sebagai:</p><p style='color: white; font-weight: bold;'>👤 {st.session_state.user_nama}</p></div>", unsafe_allow_html=True)
 
@@ -653,8 +547,8 @@ elif st.session_state.current_page == "rangkuman":
             
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
             
-            with st.spinner("Menghitung kausalitas dinamis..."):
-                ates, _ = run_scm_analysis(df, DAG_MODELS[dag_pilihan]["edges"])
+            # Ambil ATE statis berdasarkan DAG yang dipilih
+            ates = DAG_MODELS[dag_pilihan]["ate"]
             
             nama_awam = {"Self_Efficacy": "Percaya Diri", "Academic_Anxiety": "Rasa Cemas", "School_Support": "Dukungan Sekolah", "Parental_Involvement": "Dukungan Orang Tua", "Learning_Motivation": "Semangat Belajar"}
             
@@ -670,27 +564,25 @@ elif st.session_state.current_page == "rangkuman":
             st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR (CUSTOM DAG & DOWHY)
+# HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG & INTERPRETASI)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
-    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Nilai Akademik (Y). Setiap DAG dianalisis otomatis: ATE (penyesuaian backdoor), regresi berganda, mediasi Baron-Kenny, dan Interpretasi Hasil.")
+    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Nilai Akademik (Y). Pilih model DAG untuk melihat visualisasi jalur kausal dan interpretasinya.")
     
     tab_daftar, tab_create, tab_banding = st.tabs(["📂 Daftar DAG", "➕ Create DAG", "📊 Perbandingan Lintas DAG"])
     
     # TAB 1: DAFTAR DAG
     with tab_daftar:
-        # Kotak Info
         st.markdown("""
         <div style="background-color: #e0f2f1; border-left: 5px solid #0d9488; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #004d40; font-size: 0.9rem;">
             <strong>Silakan pilih model terbaik menurut data: DAG 4 — Full Structural (Ecological Systems + SRL) atau DAG 2 — Full Mediation (SDT).</strong><br>
-            Model-model ini lolos uji kecocokan dengan data: semua anggapan "tidak saling berkaitan" di dalam DAG-nya terpenuhi (uji d-separation Shipley, p = 0,81), dan BIC-nya paling kecil di antara model dengan kelompok konstruk yang sama. Kelompok konstruknya berbeda, jadi model-model ini tidak bisa dibandingkan langsung; pilih yang paling sesuai teori.
+            Model-model ini lolos uji kecocokan dengan data: semua anggapan "tidak saling berkaitan" di dalam DAG-nya terpenuhi (uji d-separation Shipley, p = 0,81), dan BIC-nya paling kecil di antara model dengan kelompok konstruk yang sama.
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown("### Contoh DAG")
         
-        # Grid untuk Card
         c1, c2 = st.columns(2)
         
         dag_titles = {
@@ -703,72 +595,160 @@ elif st.session_state.current_page == "kausal":
         for i, (k, v) in enumerate(DAG_MODELS.items()):
             target_col = c1 if i % 2 == 0 else c2
             with target_col:
-                # Tampilan Card
                 st.markdown(f"""
                 <div class="dag-card">
                     <div>
                         <h3>{dag_titles.get(k, k)}</h3>
                         <p>{v['deskripsi']}</p>
                     </div>
-                    <span class="dag-link">{len(v['edges'])} sisi</span>
+                    <span class="dag-link">{v['edges']} sisi</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Tombol di bawah Card
                 if st.button(f"lihat diagram & interpretasi →", key=f"lihat_{k}", use_container_width=True):
                     st.session_state.selected_dag = k
                     st.rerun()
 
-        # Tampilkan Custom DAG jika ada
-        if st.session_state.custom_dags:
-            st.markdown("### DAG Buatan Sendiri (Custom)")
-            c3, c4 = st.columns(2)
-            for i, (k, v) in enumerate(st.session_state.custom_dags.items()):
-                target_col = c3 if i % 2 == 0 else c4
-                with target_col:
-                    st.markdown(f"""
-                    <div class="dag-card">
-                        <div>
-                            <h3>{k}</h3>
-                            <p>{v['deskripsi']}</p>
-                        </div>
-                        <span class="dag-link">{len(v['edges'])} sisi</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
-                        st.session_state.selected_dag = k
-                        st.rerun()
-
-        # --- BAGIAN ANALISIS (Muncul setelah DAG dipilih) ---
+        # --- BAGIAN VISUALISASI (Muncul setelah DAG dipilih) ---
         if st.session_state.get("selected_dag"):
             st.markdown("---")
             selected = st.session_state.selected_dag
-            info = DAG_MODELS.get(selected) or st.session_state.custom_dags.get(selected)
             
-            st.subheader(f"Analisis Model: {selected}")
-            st.info(info["deskripsi"])
+            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model
+            if selected == "Model 1: Baseline Direct Effects":
+                dot = """digraph G {
+                    rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
+                    node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
+                    edge [fontname="Helvetica", fontsize=10];
+                    PI [label="Parental\\nInvolvement", fillcolor="#0f766e"];
+                    SS [label="School Support", fillcolor="#0f766e"];
+                    SE [label="Self Efficacy", fillcolor="#0f766e"];
+                    LM [label="Learning\\nMotivation", fillcolor="#0f766e"];
+                    AA [label="Academic\\nAnxiety", fillcolor="#0f766e"];
+                    Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
+                    
+                    PI -> Y [label="β=1.25 ns", style=dashed, color="#666"];
+                    SS -> Y [label="β=-3.61***", color="#dc2626"];
+                    SE -> Y [label="β=3.94***", color="#0d9488", penwidth=2.5];
+                    LM -> Y [label="β=-0.58 ns", style=dashed, color="#666"];
+                    AA -> Y [label="β=1.29*", color="#dc2626"];
+                }"""
+                interpretasi = """
+                **Interpretasi DAG 1:**
+                *   **Self Efficacy (SE)** adalah prediktor terkuat dan paling signifikan (β = +3.94, p < 0.001). Setiap kenaikan 1 poin SE menghasilkan kenaikan nilai ~3.9 poin.
+                *   **School Support (SS)** memiliki nilai negatif (β = -3.61, p < 0.001). Ini adalah *suppression effect* akibat multikolinearitas dengan SE, bukan berarti sekolah memberikan dampak negatif.
+                *   **Academic Anxiety (AA)** memiliki efek positif (β = +1.29, p < 0.05). Ini mendukung teori *Yerkes-Dodson* (kecemasan tingkat sedang dapat memacu performa).
+                """
             
-            if st.button("🚀 Jalankan Analisis DoWhy & OLS", type="primary"):
-                refresh_pengaruh()
-                df = pd.DataFrame(st.session_state.database_siswa)
-                
-                if df.empty or len(df[df["Nilai Akademik"] > 0]) < 10:
-                    st.warning("Data siswa dengan nilai kurang dari 10. Analisis membutuhkan minimal 10 data valid.")
-                else:
-                    with st.spinner("Menghitung Average Treatment Effect (ATE) dan Regresi..."):
-                        ates, ols_params = run_scm_analysis(df, info["edges"])
-                        
-                        st.markdown("#### Hasil Average Treatment Effect (DoWhy)")
-                        if ates:
-                            cols_ate = st.columns(len(ates))
-                            for idx, (k, v) in enumerate(ates.items()):
-                                with cols_ate[idx % len(cols_ate)]:
-                                    st.metric(label=k.replace('_', ' '), value=f"{v:+.3f}")
-                        else:
-                            st.warning("Gagal menghitung ATE. Periksa apakah data valid.")
-                            
-                        st.markdown("#### Visualisasi Diagram DAG")
-                        draw_dag_matplotlib(info["edges"], ates)
+            elif selected == "Model 2: Full Mediation (SDT)":
+                dot = """digraph G {
+                    rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
+                    node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
+                    edge [fontname="Helvetica", fontsize=9];
+                    PI [label="Parental\\nInvolvement", fillcolor="#0f766e"];
+                    SS [label="School Support", fillcolor="#0f766e"];
+                    LM [label="Learning\\nMotivation", fillcolor="#0f766e"];
+                    SE [label="Self Efficacy", fillcolor="#0f766e"];
+                    AA [label="Academic\\nAnxiety", fillcolor="#0f766e"];
+                    Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
+                    
+                    PI -> LM [label="+0.19*", color="#0d9488"];
+                    PI -> SE [label="+0.19*", color="#0d9488"];
+                    PI -> AA [label="+0.14 ns", style=dashed, color="#666"];
+                    SS -> LM [label="+0.50***", color="#0d9488"];
+                    SS -> SE [label="+0.65***", color="#0d9488"];
+                    SS -> AA [label="+0.49***", color="#0d9488"];
+                    
+                    LM -> Y [label="-1.04 ns", style=dashed, color="#666"];
+                    SE -> Y [label="+2.57**", color="#0d9488", penwidth=2.5];
+                    AA -> Y [label="+0.98 ns", style=dashed, color="#666"];
+                }"""
+                interpretasi = """
+                **Interpretasi DAG 2 (SDT):**
+                *   **Lingkungan sosial (PI & SS)** tidak memiliki efek langsung ke Prestasi, melainkan **dimediasi sepenuhnya** oleh faktor psikologis (SE, LM, AA).
+                *   **Self Efficacy** kembali menjadi mediator terkuat (path b = +2.57**). Dukungan sekolah (SS) sangat kuat membangun Self-Efficacy (path a = +0.65***).
+                *   Efek total Parental Involvement (PI) menjadi signifikan di model ini setelah jalur mediasi dibuka.
+                """
+            
+            elif selected == "Model 3: Anxiety as Suppressor":
+                dot = """digraph G {
+                    rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
+                    node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
+                    edge [fontname="Helvetica", fontsize=9];
+                    PI [label="Parental\\nInvolvement", fillcolor="#0f766e"];
+                    SS [label="School Support", fillcolor="#0f766e"];
+                    AA [label="Academic\\nAnxiety", fillcolor="#0f766e"];
+                    LM [label="Learning\\nMotivation", fillcolor="#0f766e"];
+                    SE [label="Self Efficacy", fillcolor="#0f766e"];
+                    Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
+                    
+                    PI -> LM [label="+0.19*", color="#0d9488"];
+                    PI -> SE [label="+0.19*", color="#0d9488"];
+                    PI -> AA [label="+0.14 ns", style=dashed, color="#666"];
+                    PI -> Y [label="+1.25 ns", style=dashed, color="#666"];
+                    
+                    SS -> LM [label="+0.50***", color="#0d9488"];
+                    SS -> SE [label="+0.65***", color="#0d9488"];
+                    SS -> AA [label="+0.49***", color="#0d9488"];
+                    SS -> Y [label="-3.61***", color="#dc2626"];
+                    
+                    AA -> LM [label="+0.20**", color="#dc2626"];
+                    AA -> SE [label="+0.10 ns", style=dashed, color="#666"];
+                    AA -> Y [label="+1.29*", color="#dc2626"];
+                    
+                    LM -> Y [label="-0.58 ns", style=dashed, color="#666"];
+                    SE -> Y [label="+3.94***", color="#0d9488", penwidth=2.5];
+                }"""
+                interpretasi = """
+                **Interpretasi DAG 3:**
+                *   Kecemasan (AA) tidak menekan motivasi (LM), justru memiliki efek positif (β = +0.20**). Ini menandakan bahwa siswa dengan kecemasan tinggi justru lebih termotivasi untuk belajar (*approach anxiety*).
+                *   Dengan dibukanya jalur AA → LM dan AA → SE, efek AA terhadap Prestasi (Y) menjadi signifikan (β = +1.29*).
+                """
+            
+            elif selected == "Model 4: Full Structural (Ecological)":
+                dot = """digraph G {
+                    rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
+                    node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2];
+                    edge [fontname="Helvetica", fontsize=9];
+                    PI [label="Parental\\nInvolvement", fillcolor="#0f766e"];
+                    SS [label="School Support", fillcolor="#0f766e"];
+                    SE [label="Self Efficacy", fillcolor="#0f766e"];
+                    LM [label="Learning\\nMotivation", fillcolor="#0f766e"];
+                    AA [label="Academic\\nAnxiety", fillcolor="#0f766e"];
+                    Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
+                    
+                    PI -> SS [label="+0.43***", color="#0d9488"];
+                    PI -> LM [label="+0.19*", color="#0d9488"];
+                    PI -> SE [label="+0.19*", color="#0d9488"];
+                    
+                    SS -> LM [label="+0.50***", color="#0d9488"];
+                    SS -> SE [label="+0.65***", color="#0d9488"];
+                    
+                    SE -> LM [label="+0.43***", color="#0d9488", penwidth=2];
+                    LM -> AA [label="+0.45**", color="#0d9488"];
+                    
+                    LM -> Y [label="-0.58 ns", style=dashed, color="#666"];
+                    SE -> Y [label="+3.94***", color="#0d9488", penwidth=2.5];
+                    AA -> Y [label="+1.29*", color="#dc2626"];
+                }"""
+                interpretasi = """
+                **Interpretasi DAG 4 (Full Structural):**
+                *   Model ini memvalidasi 3 jalur baru yang signifikan secara statistik:
+                *   **Parental Involvement → School Support** (β = +0.43***): Orang tua yang terlibat aktif meningkatkan kualitas hubungan dengan sekolah.
+                *   **Self Efficacy → Learning Motivation** (β = +0.43***): Keyakinan diri adalah bahan bakar utama motivasi belajar.
+                *   **Learning Motivation → Academic Anxiety** (β = +0.45**): Siswa yang termotivasi tinggi melihat ujian sebagai tantangan, sehingga memunculkan kecemasan positif (*approach anxiety*).
+                """
+            else:
+                st.warning("Visualisasi untuk DAG kustom belum tersedia. Silakan gunakan 4 model utama.")
+                dot = None
+                interpretasi = ""
+
+            if dot:
+                st.markdown(f"### Visualisasi: {dag_titles.get(selected, selected)}")
+                st.graphviz_chart(dot, use_container_width=True)
+                st.markdown("---")
+                st.markdown(f"### Penjelasan & Interpretasi Hasil")
+                st.info(interpretasi)
 
     # TAB 2: CREATE DAG
     with tab_create:
@@ -789,7 +769,6 @@ elif st.session_state.current_page == "kausal":
                 if not nama_dag or len(nodes_input) < 1: 
                     st.error("Isi Nama DAG dan minimal satu Node.")
                 else:
-                    # Asumsi default: semua node kecuali 'Nilai Akademik' mempengaruhi 'Nilai Akademik'
                     new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
                     st.session_state.custom_dags[nama_dag] = {
                         "deskripsi": f"Model kustom dibuat: {datetime.now().strftime('%Y-%m-%d')}.",
@@ -818,7 +797,7 @@ elif st.session_state.current_page == "prediksi":
         
     if st.button("Hitung Perkiraan Nilai", type="primary"):
         profil = {"Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Parental_Involvement": p_ortu, "School_Support": p_sekolah}
-        ate_model1 = {"Parental_Involvement": 1.4212, "School_Support": -1.4545, "Self_Efficacy": 2.9292, "Learning_Motivation": 0.2533, "Academic_Anxiety": 1.2613}
+        ate_model1 = DAG_MODELS["Model 1: Baseline Direct Effects"]["ate"]
         score = RATA_RATA_NILAI + sum([ate_model1[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
         st.markdown(f'<div style="background:white; border-left:5px solid {warna}; padding:2rem; text-align:center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"><h3>Hasil Perkiraan Nilai</h3><h1 style="font-size:4rem; color:{warna}; margin:10px 0;">{score:.2f}</h1><h4>Kategori: {kat}</h4></div>', unsafe_allow_html=True)
