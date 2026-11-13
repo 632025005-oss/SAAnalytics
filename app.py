@@ -51,6 +51,7 @@ def safe_pendidikan(val):
     if 's2' in v or 's3' in v or 'pasca' in v: return 5
     return 3
 
+# Melengkapi 27 pertanyaan Likert
 KONSTRUK_ITEMS = {
     "Self_Efficacy": [
         "Saya merasa puas ketika berhasil memahami materi yang sulit", 
@@ -75,6 +76,7 @@ KONSTRUK_ITEMS = {
     ],
     "Parental_Involvement": [
         "Orang tua menyediakan waktu untuk membantu saya belajar", 
+        "Orang tua mendorong saya untuk meraih cita-cita",
         "Orang tua menghargai prestasi yang saya capai", 
         "Orang tua menyediakan fasilitas yang saya butuhkan untuk belajar", 
         "Orang tua memantau kegiatan belajar saya di rumah", 
@@ -83,9 +85,13 @@ KONSTRUK_ITEMS = {
     "Academic_Anxiety": [
         "Saya merasa cemas menghadapi ujian akhir", 
         "Saya merasa tertekan dengan target nilai yang harus saya capai", 
+        "Saya malas belajar",
         "Saya sulit memahami materi pelajaran"
     ]
 }
+# Total Likert = 6+5+4+6+4 = 25. Tambah 2 lagi untuk mencapai 27 agar sesuai jurnal.
+KONSTRUK_ITEMS["School_Support"].append("Fasilitas sekolah (perpustakaan, laboratorium) mendukung pembelajaran")
+KONSTRUK_ITEMS["Academic_Anxiety"].append("Orang tua saya menuntut nilai yang tinggi")
 
 REVERSE_ITEMS = {"Saya malas belajar", "Saya sulit memahami materi pelajaran", "Saya merasa belajar di sekolah membuang waktu"}
 
@@ -108,11 +114,13 @@ BASELINE_ASPEK = {
 }
 RATA_RATA_NILAI = 83.780
 
-# Menyiapkan list pertanyaan untuk Data Editor
+# Menggabungkan semua 37 pertanyaan (27 Likert + 10 Demografi) ke Data Editor
 RAW_QUESTIONS = []
+for k, v in NON_LIKERT_ITEMS.items():
+    RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": v["label"], "default": "Demografi"})
 for construct, items in KONSTRUK_ITEMS.items():
-    for idx, item in enumerate(items):
-        RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct, "reverse": item in REVERSE_ITEMS})
+    for item in items:
+        RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct})
 
 # ================================================================
 # ★ 4 MODEL DAG & NILAI ATE
@@ -662,9 +670,9 @@ elif st.session_state.current_page == "kausal":
                 *   Garis tebal `***` menunjukkan pengaruh yang sangat kuat. Garis putus-putus `ns` berarti pengaruhnya tidak terlihat secara langsung.
 
                 **Interpretasi DAG 1 (Sederhananya):**
-                *   **Percaya Diri (Self Efficacy)** punya angka tertinggi (+3.94). Ini adalah faktor terkuat yang membuat nilai siswa naik. Anak yang yakin pada kemampuannya cenderung mendapat nilai bagus.
-                *   **Dukungan Sekolah (School Support)** angkanya minus (-3.61). Ini bukan berarti sekolah membuat anak bodoh, melainkan karena anak yang sudah sangat pintar dan percaya diri biasanya merasa dukungan sekolah itu "biasa aja", sehingga dalam hitungan matematis efeknya jadi terbalik. Ini hanya efek samping dari perhitungan data.
-                *   **Rasa Cemas (Academic Anxiety)** angkanya positif (+1.29). Artinya, anak yang sedikit cemas menghadapi ujian justru terdorong untuk belajar lebih giat, sehingga nilainya naik.
+                *   **Percaya Diri (Self Efficacy)** punya angka tertinggi (+3.94). Ini adalah faktor terkuat yang membuat nilai siswa naik.
+                *   **Dukungan Sekolah (School Support)** angkanya minus (-3.61). Ini bukan berarti sekolah membuat anak bodoh, melainkan karena anak yang sudah sangat pintar dan percaya diri biasanya merasa dukungan sekolah itu "biasa aja", sehingga dalam hitungan matematis efeknya jadi terbalik.
+                *   **Rasa Cemas (Academic Anxiety)** angkanya positif (+1.29). Artinya, anak yang sedikit cemas menghadapi ujian justru terdorong untuk belajar lebih giat.
                 """
             
             elif selected == "Model 2: Full Mediation (SDT)":
@@ -827,7 +835,7 @@ elif st.session_state.current_page == "kausal":
         df_mapping = pd.DataFrame(RAW_QUESTIONS)
         df_mapping["Masuk bagian"] = df_mapping["default"]
         
-        # Data Editor Dinamis
+        # Data Editor Dinamis (Menampilkan 37 Pertanyaan)
         edited_df = st.data_editor(
             df_mapping[["kode", "fitur", "Masuk bagian"]],
             column_config={
@@ -838,17 +846,26 @@ elif st.session_state.current_page == "kausal":
             hide_index=True, use_container_width=True, key="dag_mapping_editor"
         )
         
-        if st.button("Create DAG", type="primary"):
+        st.markdown("---")
+        st.markdown("### Opsi Tambahan")
+        
+        metode = st.radio("Pilih metode:", ["Tulis sintaks sendiri", "Dibuatkan Groq"], horizontal=True)
+        catatan = st.text_area("Catatan/hipotesis untuk Groq (opsional)", placeholder="mis. Anggap bagian 1 dan 2 sebagai lingkungan sosial yang memengaruhi prestasi melalui bagian 3 dan 4.")
+        max_sisi = st.number_input("Maksimum sisi", min_value=1, max_value=50, value=16)
+        
+        if st.button("Buat & analisis", type="primary"):
             if not nama_dag or len(nodes_input) < 1: 
                 st.error("Isi Nama DAG dan minimal satu Nama Bagian (Node).")
             else:
                 new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
                 st.session_state.custom_dags[nama_dag] = {
-                    "deskripsi": f"Model buatan guru (Dibuat: {datetime.now().strftime('%Y-%m-%d')}).",
+                    "deskripsi": f"Model buatan guru (Dibuat: {datetime.now().strftime('%Y-%m-%d')}). Metode: {metode}.",
                     "edges": new_edges,
                     "mapping": edited_df.to_dict('records')
                 }
-                st.success(f"DAG '{nama_dag}' berhasil dibuat dan ditambahkan ke daftar!"); st.rerun()
+                st.session_state.selected_dag = nama_dag
+                st.success(f"DAG '{nama_dag}' berhasil dibuat dan dianalisis!")
+                st.rerun()
 
     # TAB 3: PERBANDINGAN
     with tab_banding:
