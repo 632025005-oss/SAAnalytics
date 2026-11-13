@@ -51,7 +51,7 @@ def safe_pendidikan(val):
     if 's2' in v or 's3' in v or 'pasca' in v: return 5
     return 3
 
-# Melengkapi 27 pertanyaan Likert
+# Melengkapi 27 pertanyaan Likert (Total 37 - 10 Demografi)
 KONSTRUK_ITEMS = {
     "Self_Efficacy": [
         "Saya merasa puas ketika berhasil memahami materi yang sulit", 
@@ -72,7 +72,8 @@ KONSTRUK_ITEMS = {
         "Guru-guru menuntut saya untuk lulus dengan baik", 
         "Guru-guru di sekolah saya mengajar dengan baik", 
         "Guru memberikan perhatian jika saya kesulitan belajar", 
-        "Suasana di sekolah saya mendukung untuk belajar"
+        "Suasana di sekolah saya mendukung untuk belajar",
+        "Fasilitas sekolah (perpustakaan, laboratorium) mendukung pembelajaran"
     ],
     "Parental_Involvement": [
         "Orang tua menyediakan waktu untuk membantu saya belajar", 
@@ -86,12 +87,11 @@ KONSTRUK_ITEMS = {
         "Saya merasa cemas menghadapi ujian akhir", 
         "Saya merasa tertekan dengan target nilai yang harus saya capai", 
         "Saya malas belajar",
-        "Saya sulit memahami materi pelajaran"
+        "Saya sulit memahami materi pelajaran",
+        "Orang tua saya menuntut nilai yang tinggi"
     ]
 }
-# Total Likert = 6+5+4+6+4 = 25. Tambah 2 lagi untuk mencapai 27 agar sesuai jurnal.
-KONSTRUK_ITEMS["School_Support"].append("Fasilitas sekolah (perpustakaan, laboratorium) mendukung pembelajaran")
-KONSTRUK_ITEMS["Academic_Anxiety"].append("Orang tua saya menuntut nilai yang tinggi")
+# Total Likert = 6+5+5+6+5 = 27.
 
 REVERSE_ITEMS = {"Saya malas belajar", "Saya sulit memahami materi pelajaran", "Saya merasa belajar di sekolah membuang waktu"}
 
@@ -114,13 +114,12 @@ BASELINE_ASPEK = {
 }
 RATA_RATA_NILAI = 83.780
 
-# Menggabungkan semua 37 pertanyaan (27 Likert + 10 Demografi) ke Data Editor
+# Menggabungkan hanya 27 pertanyaan Likert (X11 - X37) ke Data Editor
 RAW_QUESTIONS = []
-for k, v in NON_LIKERT_ITEMS.items():
-    RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": v["label"], "default": "Demografi"})
 for construct, items in KONSTRUK_ITEMS.items():
     for item in items:
-        RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct})
+        # Memulai kode dari X11 karena X1-X10 adalah demografi
+        RAW_QUESTIONS.append({"kode": f"X{len(RAW_QUESTIONS) + 11}", "fitur": item, "default": construct})
 
 # ================================================================
 # ★ 4 MODEL DAG & NILAI ATE
@@ -835,7 +834,7 @@ elif st.session_state.current_page == "kausal":
         df_mapping = pd.DataFrame(RAW_QUESTIONS)
         df_mapping["Masuk bagian"] = df_mapping["default"]
         
-        # Data Editor Dinamis (Menampilkan 37 Pertanyaan)
+        # Data Editor Dinamis (Hanya menampilkan X11 - X37)
         edited_df = st.data_editor(
             df_mapping[["kode", "fitur", "Masuk bagian"]],
             column_config={
