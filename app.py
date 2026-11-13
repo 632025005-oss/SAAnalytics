@@ -547,9 +547,7 @@ elif st.session_state.current_page == "rangkuman":
             
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
             
-            # Ambil ATE statis berdasarkan DAG yang dipilih
             ates = DAG_MODELS[dag_pilihan]["ate"]
-            
             nama_awam = {"Self_Efficacy": "Percaya Diri", "Academic_Anxiety": "Rasa Cemas", "School_Support": "Dukungan Sekolah", "Parental_Involvement": "Dukungan Orang Tua", "Learning_Motivation": "Semangat Belajar"}
             
             kontribusi = []
@@ -564,7 +562,7 @@ elif st.session_state.current_page == "rangkuman":
             st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG & INTERPRETASI)
+# HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG & INTERPRETASI AWAM)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
@@ -614,7 +612,7 @@ elif st.session_state.current_page == "kausal":
             st.markdown("---")
             selected = st.session_state.selected_dag
             
-            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model
+            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model (Bahasa Awam)
             if selected == "Model 1: Baseline Direct Effects":
                 dot = """digraph G {
                     rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5;
@@ -627,17 +625,23 @@ elif st.session_state.current_page == "kausal":
                     AA [label="Academic\\nAnxiety", fillcolor="#0f766e"];
                     Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
                     
-                    PI -> Y [label="β=1.25 ns", style=dashed, color="#666"];
-                    SS -> Y [label="β=-3.61***", color="#dc2626"];
-                    SE -> Y [label="β=3.94***", color="#0d9488", penwidth=2.5];
-                    LM -> Y [label="β=-0.58 ns", style=dashed, color="#666"];
-                    AA -> Y [label="β=1.29*", color="#dc2626"];
+                    PI -> Y [label="+1.25 ns", style=dashed, color="#666"];
+                    SS -> Y [label="-3.61***", color="#dc2626"];
+                    SE -> Y [label="+3.94***", color="#0d9488", penwidth=2.5];
+                    LM -> Y [label="-0.58 ns", style=dashed, color="#666"];
+                    AA -> Y [label="+1.29*", color="#dc2626"];
                 }"""
                 interpretasi = """
-                **Interpretasi DAG 1:**
-                *   **Self Efficacy (SE)** adalah prediktor terkuat dan paling signifikan (β = +3.94, p < 0.001). Setiap kenaikan 1 poin SE menghasilkan kenaikan nilai ~3.9 poin.
-                *   **School Support (SS)** memiliki nilai negatif (β = -3.61, p < 0.001). Ini adalah *suppression effect* akibat multikolinearitas dengan SE, bukan berarti sekolah memberikan dampak negatif.
-                *   **Academic Anxiety (AA)** memiliki efek positif (β = +1.29, p < 0.05). Ini mendukung teori *Yerkes-Dodson* (kecemasan tingkat sedang dapat memacu performa).
+                **Panduan Membaca Diagram:**
+                *   Arah panah menunjukkan arah pengaruh (Faktor A memengaruhi Faktor B).
+                *   **Angka Positif (+)** berarti jika faktor tersebut meningkat, nilai siswa juga naik.
+                *   **Angka Negatif (-)** berarti jika faktor tersebut meningkat, nilai siswa justru turun.
+                *   Garis tebal dan tanda bintang `***` menunjukkan pengaruh yang sangat kuat dan nyata. Garis putus-putus `ns` berarti pengaruhnya tidak terlalu terlihat secara langsung.
+
+                **Interpretasi DAG 1 (Sederhananya):**
+                *   **Percaya Diri (Self Efficacy)** punya angka tertinggi (+3.94). Ini adalah faktor terkuat yang membuat nilai siswa naik. Anak yang yakin pada kemampuannya cenderung mendapat nilai bagus.
+                *   **Dukungan Sekolah (School Support)** angkanya minus (-3.61). Ini bukan berarti sekolah membuat anak bodoh, melainkan karena anak yang sudah sangat pintar dan percaya diri biasanya merasa dukungan sekolah itu "biasa aja", sehingga dalam hitungan matematis efeknya jadi terbalik. Ini hanya efek samping dari perhitungan data.
+                *   **Rasa Cemas (Academic Anxiety)** angkanya positif (+1.29). Artinya, anak yang sedikit cemas menghadapi ujian justru terdorong untuk belajar lebih giat, sehingga nilainya naik.
                 """
             
             elif selected == "Model 2: Full Mediation (SDT)":
@@ -664,10 +668,15 @@ elif st.session_state.current_page == "kausal":
                     AA -> Y [label="+0.98 ns", style=dashed, color="#666"];
                 }"""
                 interpretasi = """
-                **Interpretasi DAG 2 (SDT):**
-                *   **Lingkungan sosial (PI & SS)** tidak memiliki efek langsung ke Prestasi, melainkan **dimediasi sepenuhnya** oleh faktor psikologis (SE, LM, AA).
-                *   **Self Efficacy** kembali menjadi mediator terkuat (path b = +2.57**). Dukungan sekolah (SS) sangat kuat membangun Self-Efficacy (path a = +0.65***).
-                *   Efek total Parental Involvement (PI) menjadi signifikan di model ini setelah jalur mediasi dibuka.
+                **Panduan Membaca Diagram:**
+                *   Arah panah menunjukkan arah pengaruh (Faktor A memengaruhi Faktor B).
+                *   **Angka Positif (+)** berarti saling menguatkan/menaikkan.
+                *   Garis tebal dan tanda bintang `***` menunjukkan pengaruh yang sangat kuat dan nyata.
+
+                **Interpretasi DAG 2 (Sederhananya):**
+                *   Model ini menunjukkan bahwa **Dukungan Orang Tua** dan **Dukungan Sekolah** tidak bisa langsung menaikkan nilai siswa. 
+                *   Mereka bekerja dengan cara **membangun rasa Percaya Diri (Self Efficacy)** dan **Semangat Belajar (Learning Motivation)** siswa terlebih dahulu.
+                *   Contohnya, Dukungan Sekolah punya angka sangat besar (+0.65) untuk membangun Percaya Diri. Setelah anak punya rasa percaya diri (+2.57), barulah nilai akademiknya ikut naik. Jadi, kuncinya ada di dalam diri siswa (Percaya Diri).
                 """
             
             elif selected == "Model 3: Anxiety as Suppressor":
@@ -700,9 +709,14 @@ elif st.session_state.current_page == "kausal":
                     SE -> Y [label="+3.94***", color="#0d9488", penwidth=2.5];
                 }"""
                 interpretasi = """
-                **Interpretasi DAG 3:**
-                *   Kecemasan (AA) tidak menekan motivasi (LM), justru memiliki efek positif (β = +0.20**). Ini menandakan bahwa siswa dengan kecemasan tinggi justru lebih termotivasi untuk belajar (*approach anxiety*).
-                *   Dengan dibukanya jalur AA → LM dan AA → SE, efek AA terhadap Prestasi (Y) menjadi signifikan (β = +1.29*).
+                **Panduan Membaca Diagram:**
+                *   **Angka Positif (+)** berarti saling menguatkan/menaikkan.
+                *   **Angka Negatif (-)** berarti menurunkan.
+
+                **Interpretasi DAG 3 (Sederhananya):**
+                *   Biasanya orang tua mengira rasa cemas itu buruk. Tapi di data ini, **Rasa Cemas (Academic Anxiety)** angkanya positif (+0.20). 
+                *   Artinya, siswa yang sedikit cemas menghadapi ujian justru **lebih termotivasi untuk belajar lebih giat**. Rasa cemas di sini berfungsi sebagai alarm yang bikin mereka bangun dan belajar, bukan sebagai penghalang.
+                *   Namun, rasa percaya diri (**Self Efficacy**) tetap menjadi kunci utama yang paling besar pengaruhnya (+3.94) untuk mendongkrak nilai.
                 """
             
             elif selected == "Model 4: Full Structural (Ecological)":
@@ -732,11 +746,14 @@ elif st.session_state.current_page == "kausal":
                     AA -> Y [label="+1.29*", color="#dc2626"];
                 }"""
                 interpretasi = """
-                **Interpretasi DAG 4 (Full Structural):**
-                *   Model ini memvalidasi 3 jalur baru yang signifikan secara statistik:
-                *   **Parental Involvement → School Support** (β = +0.43***): Orang tua yang terlibat aktif meningkatkan kualitas hubungan dengan sekolah.
-                *   **Self Efficacy → Learning Motivation** (β = +0.43***): Keyakinan diri adalah bahan bakar utama motivasi belajar.
-                *   **Learning Motivation → Academic Anxiety** (β = +0.45**): Siswa yang termotivasi tinggi melihat ujian sebagai tantangan, sehingga memunculkan kecemasan positif (*approach anxiety*).
+                **Panduan Membaca Diagram:**
+                *   Semakin tebal garis panahnya, semakin kuat pengaruhnya. Tanda `***` artinya pengaruhnya terbukti sangat nyata.
+
+                **Interpretasi DAG 4 (Sederhananya):**
+                *   Model ini paling lengkap dan menunjukkan bahwa semua faktor saling berhubungan membentuk "lingkaran positif".
+                *   **Orang Tua ke Sekolah (+0.43)**: Orang tua yang peduli dan aktif di rumah akan membuat anak merasa lebih didukung oleh lingkungan sekolahnya.
+                *   **Percaya Diri ke Semangat Belajar (+0.43)**: Anak yang yakin pada kemampuannya akan otomatis punya semangat belajar yang tinggi.
+                *   **Semangat Belajar ke Rasa Cemas (+0.45)**: Anak yang semangat belajarnya tinggi justru sedikit cemas saat ujian. Ini cemas yang sehat (takut dapat nilai jelek makanya belajar mati-matian), bukan cemas yang bikin panik.
                 """
             else:
                 st.warning("Visualisasi untuk DAG kustom belum tersedia. Silakan gunakan 4 model utama.")
