@@ -176,7 +176,6 @@ def hitung_ols_custom(df, dag_edges):
     except:
         return {}
 
-# Fungsi untuk menerjemahkan angka statistik ke bahasa awam
 def terjemah_efek(beta, pval):
     if pval >= 0.05: return "Tidak Berpengaruh"
     if beta > 0:
@@ -647,7 +646,12 @@ elif st.session_state.current_page == "kausal":
         if st.session_state.custom_dags:
             st.markdown("### DAG Buatan Guru (Kustom)")
             c3, c4 = st.columns(2)
-            for i, (k, v) in enumerate(st.session_state.custom_dags.items()):
+            
+            # Menggunakan list() agar aman saat ada penghapusan data di dalam loop
+            custom_dag_keys = list(st.session_state.custom_dags.keys())
+            
+            for i, k in enumerate(custom_dag_keys):
+                v = st.session_state.custom_dags[k]
                 target_col = c3 if i % 2 == 0 else c4
                 with target_col:
                     st.markdown(f"""
@@ -659,9 +663,19 @@ elif st.session_state.current_page == "kausal":
                         <span class="dag-link">{len(v['edges'])} sisi</span>
                     </div>
                     """, unsafe_allow_html=True)
-                    if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
-                        st.session_state.selected_dag = k
-                        st.rerun()
+                    
+                    # Tombol Aksi (Lihat & Hapus)
+                    b1, b2 = st.columns([4, 1])
+                    with b1:
+                        if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
+                            st.session_state.selected_dag = k
+                            st.rerun()
+                    with b2:
+                        if st.button("🗑️", key=f"hapus_custom_{k}", help="Hapus DAG ini"):
+                            del st.session_state.custom_dags[k]
+                            if st.session_state.selected_dag == k:
+                                st.session_state.selected_dag = None
+                            st.rerun()
 
         # --- BAGIAN VISUALISASI (Muncul setelah DAG dipilih) ---
         if st.session_state.get("selected_dag"):
@@ -906,7 +920,6 @@ elif st.session_state.current_page == "kausal":
         
         for dag_name in all_dags.keys():
             col_name = dag_name.split(":")[0] if ":" in dag_name else dag_name
-            # Dummy values untuk simulasi karena kita tidak menghitung R2 secara dinamis di sini
             akurasi_row[col_name] = "Cukup Baik" if "Model 1" in dag_name or "Model 4" in dag_name else "Kurang Baik"
             stabil_row[col_name] = "Sangat Yakin" if "Model 1" in dag_name or "Model 4" in dag_name else "Cukup Yakin"
             jalur_row[col_name] = "Tidak Ada" if "Model 1" in dag_name else "Ada Beberapa"
