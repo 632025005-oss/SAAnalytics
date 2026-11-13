@@ -13,6 +13,12 @@ from openpyxl import Workbook
 from streamlit_option_menu import option_menu
 import pytz
 import statsmodels.api as sm
+import networkx as nx
+import matplotlib.pyplot as plt
+from dowhy import CausalModel
+import warnings
+
+warnings.filterwarnings("ignore")
 
 from db_storage import (
     load_users, save_users, login_siswa, simpan_survei_siswa, 
@@ -109,23 +115,12 @@ BASELINE_ASPEK = {
 }
 RATA_RATA_NILAI = 83.780
 
-# Daftar Pertanyaan untuk Tabel Pemetaan DAG
-RAW_QUESTIONS = []
-for construct, items in KONSTRUK_ITEMS.items():
-    for idx, item in enumerate(items):
-        RAW_QUESTIONS.append({"kode": f"Q{len(RAW_QUESTIONS)+1}", "fitur": item, "default": construct})
-
+# ================================================================
+# ★ 4 MODEL DAG (Sesuai Jupyter Notebook)
+# ================================================================
 DAG_MODELS = {
     "Model 1: Baseline Direct Effects": {
         "deskripsi": "Model Input-Output / Black-Box. Semua konstruk mempengaruhi Prestasi secara langsung tanpa mediasi.",
-        "ate": {
-            "Parental_Involvement": 1.4212, "School_Support": -1.4545, 
-            "Self_Efficacy": 2.9292, "Learning_Motivation": 0.2533, "Academic_Anxiety": 1.2613
-        },
-        "posisi": {
-            "Nilai Akademik": (5, 0), "Parental_Involvement": (0, 2), "School_Support": (0, 1), 
-            "Self_Efficacy": (0, 0), "Learning_Motivation": (0, -1), "Academic_Anxiety": (0, -2)
-        },
         "edges": [
             ("Parental_Involvement", "Nilai Akademik"), ("School_Support", "Nilai Akademik"), 
             ("Self_Efficacy", "Nilai Akademik"), ("Learning_Motivation", "Nilai Akademik"), ("Academic_Anxiety", "Nilai Akademik")
@@ -133,19 +128,36 @@ DAG_MODELS = {
     },
     "Model 2: Full Mediation (SDT)": {
         "deskripsi": "SDT (Ryan & Deci). Lingkungan sosial mempengaruhi prestasi melalui mekanisme psikologis.",
-        "ate": {
-            "Parental_Involvement": 2.1117, "School_Support": -0.1741, "Learning_Motivation": 0.6952, 
-            "Self_Efficacy": 4.0185, "Academic_Anxiety": 1.2642
-        },
-        "posisi": {
-            "Nilai Akademik": (5, 0.5), "Parental_Involvement": (0, 1.5), "School_Support": (0, -0.5),
-            "Learning_Motivation": (2.5, 2), "Self_Efficacy": (2.5, 0.5), "Academic_Anxiety": (2.5, -1)
-        },
         "edges": [
             ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"), 
             ("Parental_Involvement", "Academic_Anxiety"), ("School_Support", "Learning_Motivation"), 
             ("School_Support", "Self_Efficacy"), ("School_Support", "Academic_Anxiety"),
             ("Learning_Motivation", "Nilai Akademik"), ("Self_Efficacy", "Nilai Akademik"), ("Academic_Anxiety", "Nilai Akademik")
+        ]
+    },
+    "Model 3: Anxiety as Suppressor": {
+        "deskripsi": "Lazarus & Folkman. Kecemasan menekan motivasi & self-efficacy, namun orang tua/sekolah juga punya efek langsung.",
+        "edges": [
+            ("Parental_Involvement", "Learning_Motivation"), ("Parental_Involvement", "Self_Efficacy"),
+            ("Parental_Involvement", "Academic_Anxiety"), ("Parental_Involvement", "Nilai Akademik"),
+            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"),
+            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Akademik"),
+            ("Academic_Anxiety", "Learning_Motivation"), ("Academic_Anxiety", "Self_Efficacy"),
+            ("Academic_Anxiety", "Nilai Akademik"), ("Learning_Motivation", "Nilai Akademik"),
+            ("Self_Efficacy", "Nilai Akademik")
+        ]
+    },
+    "Model 4: Full Structural (Ecological)": {
+        "deskripsi": "Bronfenbrenner & Zimmerman. Model paling komprehensif dengan SE→LM, LM→AA, dan PI→SS.",
+        "edges": [
+            ("Parental_Involvement", "School_Support"), ("Parental_Involvement", "Learning_Motivation"),
+            ("Parental_Involvement", "Self_Efficacy"), ("Parental_Involvement", "Academic_Anxiety"),
+            ("Parental_Involvement", "Nilai Akademik"),
+            ("School_Support", "Learning_Motivation"), ("School_Support", "Self_Efficacy"),
+            ("School_Support", "Academic_Anxiety"), ("School_Support", "Nilai Akademik"),
+            ("Self_Efficacy", "Learning_Motivation"), ("Self_Efficacy", "Nilai Akademik"),
+            ("Learning_Motivation", "Academic_Anxiety"), ("Learning_Motivation", "Nilai Akademik"),
+            ("Academic_Anxiety", "Nilai Akademik")
         ]
     }
 }
@@ -155,12 +167,100 @@ DAG_MODELS = {
 # ================================================================
 def hash_password(p): return hashlib.sha256(p.encode()).hexdigest()
 def verify_password(p, hashed): return hash_password(p) == hashed
-def refresh_pengaruh(): st.session_state.database_siswa = get_data_gabungan() or []
+
+def refresh_pengaruh(): 
+    st.session_state.database_siswa = get_data_gabungan() or []
+
 def kategori_nilai(n):
     if n >= 88: return "Sangat Baik", "#10B981"
     if n >= 84: return "Baik", "#2563EB"
     if n >= 80: return "Cukup", "#F0B900"
     return "Perlu Perhatian", "#EF5B67"
+
+def run_scm_analysis(df_siswa, dag_edges):
+    """Menjalankan DoWhy untuk menghitung ATE dan OLS untuk koefisien jalur."""
+    if df_siswa.empty: 
+        return {}, {}
+    
+    cols = ["Nilai Akademik", "Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
+    
+    # Pastikan semua kolom ada dan konversi ke numeric
+    for c in cols:
+        if c not in df_siswa.columns:
+            df_siswa[c] = 0.0
+        df_siswa[c] = pd.to_numeric(df_siswa[c], errors='coerce').fillna(0.0)
+
+    df = df_siswa[cols].copy()
+    df = df[df["Nilai Akademik"] > 0] # Hanya siswa yang punya nilai
+    df = df.dropna()
+    
+    if len(df) < 10: 
+        return {}, {}
+
+    # 1. Buat sintaks Graphviz untuk DoWhy
+    graph_str = "digraph {\n" + "\n".join([f"{e[0]} -> {e[1]};" for e in dag_edges]) + "\n}"
+    
+    # 2. Hitung ATE dengan DoWhy
+    ates = {}
+    all_nodes = list(set([e[0] for e in dag_edges]))
+    
+    for trt in all_nodes:
+        if trt == "Nilai Akademik": continue
+        try:
+            model = CausalModel(data=df, treatment=trt, outcome="Nilai Akademik", graph=graph_str)
+            identified = model.identify_effect(proceed_when_unidentifiable=True)
+            est = model.estimate_effect(identified, method_name="backdoor.linear_regression")
+            ates[trt] = float(est.value)
+        except:
+            ates[trt] = 0.0
+            
+    # 3. Hitung OLS (untuk koefisien garis di DAG)
+    ols_params = {}
+    try:
+        X = sm.add_constant(df[all_nodes])
+        res = sm.OLS(df["Nilai Akademik"], X).fit()
+        for node in all_nodes:
+            ols_params[node] = float(res.params.get(node, 0))
+    except:
+        pass
+        
+    return ates, ols_params
+
+def draw_dag_matplotlib(edges, ates):
+    """Menggambar DAG menggunakan NetworkX & Matplotlib"""
+    G = nx.DiGraph()
+    G.add_edges_from([(e[0], e[1]) for e in edges])
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Warna node
+    node_colors = {
+        "Self_Efficacy": "#9C27B0", "Academic_Anxiety": "#F44336",
+        "School_Support": "#4CAF50", "Parental_Involvement": "#2196F3",
+        "Learning_Motivation": "#FF9800", "Nilai Akademik": "#009688"
+    }
+    colors = [node_colors.get(node, "#888") for node in G.nodes()]
+    
+    try:
+        pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
+    except:
+        pos = nx.spring_layout(G, seed=42)
+        
+    nx.draw_networkx_nodes(G, pos, node_color=colors, node_size=3000, alpha=0.9, ax=ax)
+    nx.draw_networkx_labels(G, pos, font_color="white", font_weight="bold", ax=ax)
+    nx.draw_networkx_edges(G, pos, arrows=True, arrowstyle="-|>", arrowsize=20, width=2, edge_color="#555", ax=ax)
+    
+    # Tambahkan label ATE jika ada
+    if ates:
+        edge_labels = {}
+        for e in edges:
+            if e[0] in ates:
+                edge_labels[e] = f"{ates[e[0]]:+.2f}"
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=9, ax=ax, bbox=dict(alpha=0.7, edgecolor='none'))
+        
+    ax.axis("off")
+    st.pyplot(fig)
+    plt.close(fig)
 
 # ================================================================
 # PAGE CONFIG & CSS
@@ -258,13 +358,18 @@ def render_kuesioner_siswa(nisn, is_preview=False):
                 payload = {**non_likert_data, "Nama": nama_input, "Kelas": kelas_input}
                 for construct, items in KONSTRUK_ITEMS.items():
                     vals = [construct_answers[i] for i in items]
-                    if construct in REVERSE_ITEMS: vals = [6 - v for v in vals] # Handling reverse
+                    if construct in REVERSE_ITEMS: vals = [6 - v for v in vals]
                     payload[construct] = sum(vals) / len(vals)
                 simpan_survei_siswa(nisn, payload)
                 st.balloons(); st.success("🎉 Kuesioner disimpan!")
                 refresh_pengaruh()
-                if is_preview: st.session_state.current_page = "list_survei"; st.session_state.preview_nisn = None
-                else: st.session_state.siswa_login_nisn = None
+                if is_preview: 
+                    st.session_state.current_page = "list_survei"
+                    st.session_state.last_menu = "Jawaban Survei"
+                    st.session_state.preview_nisn = None
+                    st.session_state.edit_nisn = None
+                else: 
+                    st.session_state.siswa_login_nisn = None
                 st.rerun()
 
 def halaman_login():
@@ -328,7 +433,11 @@ with st.sidebar:
 
     if menu_choice != st.session_state.last_menu:
         st.session_state.last_menu = menu_choice; st.session_state.page_survei = 1; st.session_state.page_nilai = 1
-        if menu_choice == "Keluar": st.session_state.logged_in = False; st.rerun()
+        if menu_choice == "Keluar":
+            for k in ("logged_in", "preview_nisn", "siswa_login_nisn", "edit_nisn"):
+                st.session_state[k] = None if k.endswith("_nisn") or k.startswith("preview") else False
+            st.session_state.database_siswa = []
+            st.rerun()
         else: st.session_state.current_page = mapping_menu.get(menu_choice, "home")
 
     st.markdown(f"<br><br><hr><div style='padding-left: 10px;'><p style='color: #94a3b8; font-size: 0.8rem;'>Masuk sebagai:</p><p style='color: white; font-weight: bold;'>👤 {st.session_state.user_nama}</p></div>", unsafe_allow_html=True)
@@ -341,18 +450,22 @@ if st.session_state.current_page == "home":
     refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
     total_siswa = len(df)
     
+    nilai_num = pd.to_numeric(df.get("Nilai Akademik", pd.Series(dtype=float)), errors="coerce").fillna(0)
+    n_terisi = int((nilai_num > 0).sum()) if not df.empty else 0
+    survei_lengkap = df["Self_Efficacy"].notna().sum() if "Self_Efficacy" in df.columns else 0
+
     c1, c2, c3, c4 = st.columns(4)
     with c1: st.markdown(f'<div class="kpi-card"><h2>{total_siswa}</h2><p>Siswa</p></div>', unsafe_allow_html=True)
     with c2: st.markdown(f'<div class="kpi-card"><h2>37</h2><p>Jumlah Pertanyaan</p></div>', unsafe_allow_html=True)
-    with c3: st.markdown(f'<div class="kpi-card"><h2>{df["Self_Efficacy"].notna().sum() if not df.empty else 0} siswa</h2><p>Survei Lengkap</p></div>', unsafe_allow_html=True)
-    with c4: st.markdown(f'<div class="kpi-card"><h2>{(df["Nilai Akademik"]>0).sum() if not df.empty else 0} / {total_siswa}</h2><p>Nilai Terisi</p></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="kpi-card"><h2>{survei_lengkap} siswa</h2><p>Survei Lengkap</p></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="kpi-card"><h2>{n_terisi} / {total_siswa}</h2><p>Nilai Terisi</p></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     col_chart, col_checklist = st.columns([2, 1])
     with col_chart:
         st.markdown("### Sebaran Nilai Siswa")
-        if not df.empty and 'Nilai Akademik' in df.columns and (df['Nilai Akademik'] > 0).any():
-            df_valid = df[df['Nilai Akademik'] > 0]
+        if not df.empty and 'Nilai Akademik' in df.columns and (nilai_num > 0).any():
+            df_valid = df[nilai_num > 0]
             fig = px.histogram(df_valid, x="Nilai Akademik", nbins=10, color_discrete_sequence=["#0d9488"])
             fig.update_layout(height=350, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", xaxis_title="Rentang Nilai", yaxis_title="Jumlah Siswa")
             st.plotly_chart(fig, use_container_width=True)
@@ -361,7 +474,7 @@ if st.session_state.current_page == "home":
             
     with col_checklist:
         st.markdown("""<div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; height: 100%;"><h4 style="margin-top:0; font-size:1.1rem; color: #0f172a;">Data yang Belum Lengkap</h4>""", unsafe_allow_html=True)
-        x_belum_isi = total_siswa - (df['Self_Efficacy'].notna().sum() if not df.empty else 0)
+        x_belum_isi = total_siswa - survei_lengkap
         st.markdown(f"""<ul style="list-style-type: none; padding-left: 0; font-size: 0.9rem; line-height: 2; color: #475569;"><li>📄 <b>{x_belum_isi} siswa</b> belum mengisi survei</li></ul><hr></div>""", unsafe_allow_html=True)
 
 # ================================================================
@@ -402,8 +515,13 @@ elif st.session_state.current_page == "monitoring":
                 c1.write(f"**{row.get('NISN', '-')}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Kelas: {row.get('Kelas', '-')}"); c5.write(f"Nilai: {row.get('Nilai Akademik', '0')}")
                 with c6:
                     b1, b2 = st.columns(2)
-                    if b1.button("👁️ Portal", key=f"prev_{row['NISN']}"): st.session_state.preview_nisn = row['NISN']; st.rerun()
-                    if b2.button("✏️ Edit", key=f"edit_{row['NISN']}"): st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
+                    if b1.button("👁️ Portal", key=f"prev_{row['NISN']}"): 
+                        st.session_state.edit_nisn = row['NISN']
+                        st.session_state.current_page = "edit_x"
+                        st.session_state.last_menu = "Jawaban Survei"
+                        st.rerun()
+                    if b2.button("✏️ Edit", key=f"edit_{row['NISN']}"): 
+                        st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
                 st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
 # ================================================================
@@ -428,7 +546,8 @@ elif st.session_state.current_page == "list_survei":
             status = "Lengkap ✅" if pd.notna(row.get("Self_Efficacy")) else "Belum ❌"
             c3.write(f"Terisi: {status}")
             with c4:
-                if st.button("Ubah", key=f"edit_survei_{row['NISN']}"): st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
+                if st.button("Ubah", key=f"edit_survei_{row['NISN']}"): 
+                    st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
             with c5:
                 if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"): reset_password_siswa(row['NISN']); st.success("Direset!"); st.rerun()
             with c6:
@@ -469,7 +588,7 @@ elif st.session_state.current_page == "list_nilai":
 
         for idx, row in df_page.iterrows():
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
-            c1.write(f"**{row['NISN']}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Nilai: **{row.get('Nilai Akademik', 0):.2f}**"); c4.write(f"Status: {'Lengkap' if row.get('Nilai Akademik',0)>0 else 'Kosong'}")
+            c1.write(f"**{row['NISN']}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Nilai: **{safe_float(row.get('Nilai Akademik', 0)):.2f}**"); c4.write(f"Status: {'Lengkap' if safe_float(row.get('Nilai Akademik',0))>0 else 'Kosong'}")
             with c5:
                 if st.button("Ubah", key=f"edit_nilai_{row['NISN']}"): st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_y"; st.rerun()
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
@@ -511,7 +630,7 @@ elif st.session_state.current_page == "edit_y":
     else:
         if st.button("⬅️ Kembali ke Daftar Nilai"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
-        nilai_skrg = float(siswa.get('Nilai Akademik', 0))
+        nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
         
         with st.form("form_nilai_rata"):
             nilai_tunggal = st.number_input("Masukkan Nilai Raport", min_value=0.0, max_value=100.0, value=nilai_skrg if nilai_skrg > 0 else 80.0, step=0.1)
@@ -520,27 +639,36 @@ elif st.session_state.current_page == "edit_y":
                 if sukses: st.success(pesan); refresh_pengaruh(); st.session_state.current_page = "list_nilai"; st.rerun()
 
 # ================================================================
-# HALAMAN: LAPORAN SISWA
+# HALAMAN: LAPORAN SISWA (DINAMIS BERDASARKAN DAG)
 # ================================================================
 elif st.session_state.current_page == "rangkuman":
     st.title("Laporan Hasil Analisis Siswa")
     refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
+    
     if not df.empty:
-        df["Label"] = df["Nama"] + " (" + df["Kelas"] + ")"
+        # Pilihan DAG untuk perhitungan kontribusi
+        dag_pilihan = st.selectbox("Pilih Model Analisis Faktor (DAG) untuk Laporan:", list(DAG_MODELS.keys()))
+        
+        df["Label"] = df["Nama"].astype(str) + " (" + df["Kelas"].astype(str).fillna("") + ")"
         siswa_terpilih = st.selectbox("Pilih Siswa:", df["Label"].tolist())
+        
         if siswa_terpilih:
             siswa = df[df["Label"] == siswa_terpilih].iloc[0]
             nilai = safe_float(siswa.get("Nilai Akademik", 0)); kat, warna = kategori_nilai(nilai)
             
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
             
-            current_ate = DAG_MODELS["Model 1: Baseline Direct Effects"]["ate"]
+            with st.spinner("Menghitung kausalitas dinamis..."):
+                # Hitung ATE secara dinamis berdasarkan DAG yang dipilih
+                ates, _ = run_scm_analysis(df, DAG_MODELS[dag_pilihan]["edges"])
+            
             nama_awam = {"Self_Efficacy": "Percaya Diri", "Academic_Anxiety": "Rasa Cemas", "School_Support": "Dukungan Sekolah", "Parental_Involvement": "Dukungan Orang Tua", "Learning_Motivation": "Semangat Belajar"}
             
             kontribusi = []
-            for f, ate in current_ate.items():
+            for f, nama in nama_awam.items():
+                ate = ates.get(f, 0.0)
                 val = safe_float(siswa.get(f, 3.0)); base = BASELINE_ASPEK.get(f, 3.0)
-                kontribusi.append({"Faktor": nama_awam.get(f, f), "Pengaruh (Poin)": ate * (val - base)})
+                kontribusi.append({"Faktor": nama, "Pengaruh (Poin)": ate * (val - base)})
                 
             df_kontrib = pd.DataFrame(kontribusi).sort_values("Pengaruh (Poin)")
             fig = px.bar(df_kontrib, x="Pengaruh (Poin)", y="Faktor", orientation="h", color="Pengaruh (Poin)", color_continuous_scale="RdBu", text=[f"{v:+.2f}" for v in df_kontrib["Pengaruh (Poin)"]])
@@ -548,90 +676,70 @@ elif st.session_state.current_page == "rangkuman":
             st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR (CUSTOM DAG BUILDER)
+# HALAMAN: ANALISIS FAKTOR (CUSTOM DAG & DOWHY)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
-    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Prestasi_Siswa (Y). Setiap DAG dianalisis otomatis: ATE (penyesuaian backdoor), regresi berganda, mediasi Baron-Kenny, dan Interpretasi Hasil.")
+    st.write("Konstruk dibentuk dari fitur survei X (rata-rata butir), outcome = Nilai Akademik (Y). Setiap DAG dianalisis otomatis: ATE (penyesuaian backdoor) dan OLS.")
     
-    tab_daftar, tab_create, tab_banding = st.tabs(["📂 Daftar DAG", "➕ Create DAG", "📊 Perbandingan Lintas DAG"])
+    tab_daftar, tab_create = st.tabs(["📂 Daftar DAG & Analisis", "➕ Create DAG"])
     
     # TAB 1: DAFTAR DAG
     with tab_daftar:
-        st.markdown("### Contoh DAG")
-        c1, c2 = st.columns(2)
-        with c1: st.markdown("""<div class="dag-card"><h3>DAG 1 — Baseline Direct Effects</h3><p>Input-Output Model. Semua konstruk berpengaruh langsung terhadap prestasi.</p><a href="#">5 sisi · lihat diagram & interpretasi →</a></div>""", unsafe_allow_html=True)
-        with c2: st.markdown("""<div class="dag-card"><h3>DAG 2 — Full Mediation (SDT)</h3><p>Lingkungan sosial memengaruhi prestasi melalui mekanisme psikologis.</p><a href="#">9 sisi · lihat diagram & interpretasi →</a></div>""", unsafe_allow_html=True)
-
-        if st.session_state.custom_dags:
-            st.markdown("### DAG Dibuat Secara Online")
-            for dag_name, dag_data in st.session_state.custom_dags.items():
-                st.markdown(f"""<div class="dag-card"><h3>{dag_name}</h3><p>{dag_data['deskripsi']}</p><a href="#">{len(dag_data['edges'])} sisi · lihat diagram & interpretasi →</a></div>""", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("### Visualisasi Diagram DAG")
+        st.markdown("### Pilih DAG untuk Dianalisis")
         all_models = list(DAG_MODELS.keys()) + list(st.session_state.custom_dags.keys())
+        
         if all_models:
-            pilihan_lihat = st.selectbox("Pilih DAG untuk dilihat gambarnya:", all_models)
+            pilihan_lihat = st.selectbox("Model DAG:", all_models)
             if pilihan_lihat in DAG_MODELS: info = DAG_MODELS[pilihan_lihat]
             else: info = st.session_state.custom_dags[pilihan_lihat]
             
-            nodes = set([e[0] for e in info["edges"]] + [e[1] for e in info["edges"]])
-            pos = {n: (0 if n != "Nilai Akademik" else 2, i) for i, n in enumerate(nodes)}
-            edge_x, edge_y = [], []
-            for e in info["edges"]:
-                if e[0] in pos and e[1] in pos: edge_x.extend([pos[e[0]][0], pos[e[1]][0], None]); edge_y.extend([pos[e[0]][1], pos[e[1]][1], None])
-                    
-            fig = go.Figure([go.Scatter(x=edge_x, y=edge_y, mode='lines', line=dict(width=1.5, color='#888')),
-                             go.Scatter(x=[p[0] for p in pos.values()], y=[p[1] for p in pos.values()], mode='markers+text', text=list(pos.keys()), textposition="bottom center", marker=dict(color='#1f77b4', size=30))])
-            fig.update_layout(xaxis=dict(showgrid=False, showticklabels=False), yaxis=dict(showgrid=False, showticklabels=False), height=400)
-            st.plotly_chart(fig, use_container_width=True)
+            st.info(info["deskripsi"])
+            
+            if st.button("🚀 Jalankan Analisis DoWhy & OLS", type="primary"):
+                refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
+                
+                if df.empty or len(df[df["Nilai Akademik"] > 0]) < 10:
+                    st.warning("Data siswa dengan nilai kurang dari 10. Analisis membutuhkan minimal 10 data valid.")
+                else:
+                    with st.spinner("Menghitung Average Treatment Effect (ATE) dan Regresi..."):
+                        ates, ols_params = run_scm_analysis(df, info["edges"])
+                        
+                        st.markdown("#### Hasil Average Treatment Effect (DoWhy)")
+                        cols_ate = st.columns(len(ates))
+                        for idx, (k, v) in enumerate(ates.items()):
+                            with cols_ate[idx]:
+                                st.metric(label=k.replace('_', ' '), value=f"{v:+.3f}")
+                                
+                        st.markdown("#### Visualisasi Diagram DAG (dengan nilai ATE)")
+                        draw_dag_matplotlib(info["edges"], ates)
 
     # TAB 2: CREATE DAG
     with tab_create:
-        st.info("DAG, atau tulis sintaks sendiri. Jawaban harus lolos validasi: digraph `{ A -> B; }`, hanya node yang Anda definisikan + `Prestasi_Siswa`, tanpa siklus, dan semua node punya jalur ke outcome.")
+        st.info("Buat DAG kustom. Model akan ditambahkan ke daftar dan dapat dianalisis secara otomatis.")
         
         with st.form("form_create_dag"):
             nama_dag = st.text_input("Nama DAG", placeholder="mis. Model lingkungan → psikologis → prestasi")
-            st.markdown("### Nama bagian (node), maks. 8")
+            st.markdown("### Pilih Node yang Digunakan (Maks 6)")
             
-            cols = st.columns(4); nodes_input = []
-            defaults = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation", "", "", ""]
-            for i in range(8):
-                with cols[i % 4]:
-                    val = st.text_input(f"Bagian {i+1}", value=defaults[i], key=f"node_{i}")
+            cols = st.columns(3); nodes_input = []
+            defaults = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation", "Nilai Akademik"]
+            for i in range(6):
+                with cols[i % 3]:
+                    val = st.text_input(f"Node {i+1}", value=defaults[i], key=f"node_{i}")
                     if val.strip(): nodes_input.append(val.strip())
             
-            st.markdown("### Pemetaan Fitur X (butir Likert)")
-            df_mapping = pd.DataFrame(RAW_QUESTIONS)
-            df_mapping["Masuk bagian"] = df_mapping["default"]
-            if "reverse" not in df_mapping.columns: df_mapping["reverse"] = False
-            
-            edited_df = st.data_editor(
-                df_mapping[["kode", "fitur", "Masuk bagian", "reverse"]],
-                column_config={
-                    "kode": st.column_config.TextColumn("Kode", disabled=True, width="small"),
-                    "fitur": st.column_config.TextColumn("Fitur X (butir Likert)", disabled=True, width="large"),
-                    "Masuk bagian": st.column_config.SelectboxColumn("Masuk bagian", options=nodes_input if nodes_input else ["Self_Efficacy"], required=True),
-                    "reverse": st.column_config.CheckboxColumn("Dibalik (6-x)")
-                },
-                hide_index=True, use_container_width=True
-            )
-            
-            if st.form_submit_button("Create DAG", type="primary"):
-                if not nama_dag or len(nodes_input) < 1: st.error("Isi Nama DAG dan minimal satu Nama Bagian (Node).")
+            if st.form_submit_button("Create DAG (Direct Effects Only)", type="primary"):
+                if not nama_dag or len(nodes_input) < 1: 
+                    st.error("Isi Nama DAG dan minimal satu Node.")
                 else:
+                    # Asumsi default: semua node kecuali 'Nilai Akademik' mempengaruhi 'Nilai Akademik'
                     new_edges = [(node, "Nilai Akademik") for node in nodes_input if node != "Nilai Akademik"]
                     st.session_state.custom_dags[nama_dag] = {
-                        "deskripsi": f"Model buatan guru (Dibuat: {datetime.now().strftime('%Y-%m-%d')}).",
-                        "edges": new_edges,
-                        "mapping": edited_df.to_dict('records')
+                        "deskripsi": f"Model kustom dibuat: {datetime.now().strftime('%Y-%m-%d')}.",
+                        "edges": new_edges
                     }
-                    st.success(f"DAG '{nama_dag}' berhasil dibuat dan ditambahkan ke daftar!"); st.rerun()
-
-    # TAB 3: PERBANDINGAN
-    with tab_banding:
-        st.info("Fitur perbandingan nilai ATE (Average Treatment Effect) akan tersedia di sini setelah data regresi dihitung.")
+                    st.success(f"DAG '{nama_dag}' berhasil dibuat! Silakan cek tab Daftar DAG."); st.rerun()
 
 # ================================================================
 # HALAMAN LAINNYA
@@ -650,8 +758,9 @@ elif st.session_state.current_page == "prediksi":
         
     if st.button("Hitung Perkiraan Nilai", type="primary"):
         profil = {"Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Parental_Involvement": p_ortu, "School_Support": p_sekolah}
-        current_ate = DAG_MODELS["Model 1: Baseline Direct Effects"]["ate"]
-        score = RATA_RATA_NILAI + sum([current_ate[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
+        # Gunakan hardcode dari Jupyter Notebook (Model 1)
+        ate_model1 = {"Parental_Involvement": 1.4212, "School_Support": -1.4545, "Self_Efficacy": 2.9292, "Learning_Motivation": 0.2533, "Academic_Anxiety": 1.2613}
+        score = RATA_RATA_NILAI + sum([ate_model1[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
         kat, warna = kategori_nilai(score)
         st.markdown(f'<div style="background:white; border-left:5px solid {warna}; padding:2rem; text-align:center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"><h3>Hasil Perkiraan Nilai</h3><h1 style="font-size:4rem; color:{warna}; margin:10px 0;">{score:.2f}</h1><h4>Kategori: {kat}</h4></div>', unsafe_allow_html=True)
 
@@ -670,7 +779,7 @@ elif st.session_state.current_page == "akun":
 
 elif st.session_state.current_page == "tentang":
     st.title("Panduan Penggunaan Aplikasi")
-    st.markdown("1. **Portal Siswa**: Siswa mendaftar mandiri dan mengisi survei.\n2. **Menu Nilai Raport**: Guru menginput nilai.\n3. **Laporan Siswa**: Melihat alasan nilai naik/turun.\n4. **Analisis Faktor**: Membuat DAG kustom.")
+    st.markdown("1. **Portal Siswa**: Siswa mendaftar mandiri dan mengisi survei.\n2. **Menu Nilai Raport**: Guru menginput nilai.\n3. **Laporan Siswa**: Melihat alasan nilai naik/turun berdasarkan model kausal terpilih.\n4. **Analisis Faktor**: Menjalankan simulasi DoWhy & melihat efek kausal (ATE).")
 
 elif st.session_state.current_page == "admin_users":
     st.title("Kelola Akun")
