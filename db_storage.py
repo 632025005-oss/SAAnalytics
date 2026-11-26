@@ -155,7 +155,6 @@ def get_data_gabungan():
         row["NISN"] = nisn
         row["Nilai Akademik"] = m.get("Nilai", 0)
         
-        # Cek eksplisit apakah data survei (Self_Efficacy) ada isinya
         if "Self_Efficacy" in s and s["Self_Efficacy"] is not None:
             row["Self_Efficacy"] = s["Self_Efficacy"]
             
@@ -165,61 +164,38 @@ def get_data_gabungan():
     return data_gabungan
 
 # ================================================================
-# IMPORT EXCEL (ANTI GAGAL)
+# IMPORT EXCEL PINTAR (BISA BACA FILE NILAI, FILE SUKSES, & FILE MENTAH)
 # ================================================================
 def import_data_historis_lengkap(df_excel):
     db = _db()
     count = 0
     
-    # Normalisasi nama kolom (hapus spasi di ujung, samakan huruf kecil)
+    # 1. Bersihkan nama kolom
     df_excel.columns = df_excel.columns.astype(str).str.strip()
     cols_lower = {c.lower(): c for c in df_excel.columns}
 
-    # Cari kolom NISN / NIS
-    kolom_nisn = None
-    for k in ["nisn", "nis"]:
-        if k in cols_lower: kolom_nisn = cols_lower[k]; break
-    if not kolom_nisn: return 0
+    # 2. Deteksi File
+    is_file_nilai = any(k in cols_lower for k in ["pend. agama", "matematika", "b. indo", "b.indonesia", "ipa"])
+    is_file_survei_mentah = "saya merasa puas ketika berhasil memahami materi yang sulit" in cols_lower
 
-    # Deteksi tipe file
-    is_survei = any(k in cols_lower for k in ["self_efficacy", "self efficacy", "academic_anxiety"])
-    is_nilai = any(k in cols_lower for k in ["pend. agama", "matematika", "ipa", "b indo"])
-
-    for _, row in df_excel.iterrows():
-        nisn = clean_nisn(row[kolom_nisn])
-        if not nisn: continue
+    # =========================================================
+    # PROSES FILE NILAI (Excel Nilai Kelas)
+    # =========================================================
+    if is_file_nilai:
+        kolom_nisn = cols_lower.get("nisn") or cols_lower.get("nis")
+        if not kolom_nisn: return 0
         
-        # PROSES SURVEI
-        if is_survei:
-            data_s = {"NISN": nisn}
-            for k_low, k_asli in cols_lower.items():
-                # Tangkap semua kolom survei psikologis
-                if any(x in k_low for x in ["self_efficacy", "academic_anxiety", "school_support", "parental_involvement", "learning_motivation"]):
-                    if pd.notna(row[k_asli]): data_s[k_asli] = float(row[k_asli])
-                # Tangkap kolom demografi
-                elif any(x in k_low for x in ["usia", "pendidikan terakhir", "pendapatan", "jarak", "fasilitas", "gadget", "belajar di rumah", "les / bimbingan", "ekstrakurikuler"]):
-                    if pd.notna(row[k_asli]): data_s[k_asli] = row[k_asli]
+        for _, row in df_excel.iterrows():
+            nisn = clean_nisn(row[kolom_nisn])
+            if not nisn: continue
             
-            # Tangkap Nama & Kelas
-            for k_low, k_asli in cols_lower.items():
-                if k_low in ["nama", "nama siswa"]: data_s["Nama"] = row[k_asli]
-                if k_low == "kelas": data_s["Kelas"] = row[k_asli]
-
-            db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_s}, upsert=True)
-            db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}}, upsert=True)
-            count += 1
-
-        # PROSES NILAI
-        elif is_nilai:
             data_m = {"NISN": nisn}
-            for k_low, k_asli in cols_lower.items():
-                if k_low in ["nama", "nama siswa"]: data_m["Nama"] = row[k_asli]
-                if k_low == "kelas": data_m["Kelas"] = row[k_asli]
+            if "nama" in cols_lower: data_m["Nama"] = row[cols_lower["nama"]]
+            if "kelas" in cols_lower: data_m["Kelas"] = row[cols_lower["kelas"]]
 
-            # Ambil semua angka mapel
             nilai_list = []
             for k_low, k_asli in cols_lower.items():
-                if k_low in ["no", "nis", "nisn", "nama", "nama siswa", "kelas", "rata-rata", "rata-2", "jumlah", "peringkat", "1", "2"]:
+                if k_low in ["no", "nis", "nisn", "nama", "kelas", "rata-rata", "rata-2", "jumlah", "peringkat", "1", "2"]:
                     continue
                 if pd.api.types.is_numeric_dtype(df_excel[k_asli]) and pd.notna(row[k_asli]):
                     data_m[f"Nilai_{k_asli}"] = float(row[k_asli])
@@ -231,8 +207,114 @@ def import_data_historis_lengkap(df_excel):
             if not db["siswa_akun"].find_one({"NISN": nisn}):
                 db["siswa_akun"].insert_one({"NISN": nisn, "Password_Hash": hash_password(nisn), "sudah_isi_survei": False})
             count += 1
+        return count
 
-    return count
+    # =========================================================
+    # PROSES FILE KUISIONER MENTAH (Kuesioner Thesis Asli)
+    # =========================================================
+    elif is_file_survei_mentah:
+        # Ambil semua Nama & NISN yang sudah ada di database
+        semua_master = list(db["siswa_master"].find({}, {"NISN": 1, "Nama": 1}))
+        map_nama_ke_nisn = {str(m.get("Nama", "")).strip().lower(): m.get("NISN") for m in semua_master if m.get("Nama")}
+
+        # Fungsi bantuan untuk ambil nilai jawaban
+        def get_val(keyword):
+            for k_low, k_asli in cols_lower.items():
+                if keyword in k_low: return float(row[k_asli]) if pd.notna(row[k_asli]) else 3.0
+            return 3.0
+
+        for _, row in df_excel.iterrows():
+            nama_siswa = str(row.get(cols_lower.get("nama", ""), "")).strip()
+            if not nama_siswa: continue
+            
+            # Cocokkan nama di Excel dengan NISN di Database
+            nisn = map_nama_ke_nisn.get(nama_siswa.lower())
+            if not nisn: 
+                continue # Lewati jika nama tidak ada di database
+
+            data_s = {"NISN": nisn, "Nama": nama_siswa}
+            if "kelas" in cols_lower: data_s["Kelas"] = row[cols_lower["kelas"]]
+            
+            # --- RUMUS KONSTRUK PSIKOLOGIS (Skala 1-5) ---
+            # 1. Self Efficacy (6 butir)
+            se_cols = [
+                "saya merasa puas ketika berhasil", "saya merasa nyaman dengan teman", 
+                "saya yakin bisa memahami materi", "saya yakin bisa mengerjakan tugas", 
+                "saya yakin bisa menguasai keterampilan", "saya yakin bisa mendapat nilai bagus"
+            ]
+            data_s["Self_Efficacy"] = sum([get_val(c) for c in se_cols]) / 6.0
+
+            # 2. Learning Motivation (5 butir, 1 reverse)
+            lm_cols = [
+                "saya senang belajar hal-hal baru", "saya belajar karena ingin tahu", 
+                "saya belajar karena ingin mendapat nilai", "saya belajar karena orang tua", 
+                "saya merasa belajar di sekolah membuang waktu" # Ini reverse
+            ]
+            lm_vals = [get_val(c) for c in lm_cols]
+            lm_vals[4] = 6 - lm_vals[4] # Reverse butir ke-5
+            data_s["Learning_Motivation"] = sum(lm_vals) / 5.0
+
+            # 3. School Support (5 butir)
+            ss_cols = [
+                "guru-guru menuntut saya", "guru-guru di sekolah saya mengajar", 
+                "guru memberikan perhatian", "suasana di sekolah saya mendukung", 
+                "fasilitas sekolah (perpustakaan"
+            ]
+            data_s["School_Support"] = sum([get_val(c) for c in ss_cols]) / 5.0
+
+            # 4. Parental Involvement (6 butir)
+            pi_cols = [
+                "orang tua menyediakan waktu", "orang tua mendorong saya", 
+                "orang tua menghargai prestasi", "orang tua menyediakan fasilitas", 
+                "orang tua memantau kegiatan", "orang tua menanyakan tentang nilai"
+            ]
+            data_s["Parental_Involvement"] = sum([get_val(c) for c in pi_cols]) / 6.0
+
+            # 5. Academic Anxiety (5 butir)
+            aa_cols = [
+                "saya merasa cemas menghadapi ujian", "saya merasa tertekan dengan target", 
+                "saya malas belajar (r)", "menurut saya, materi pelajaran terlalu sulit", # Ini reverse
+                "orang tua saya menuntut nilai yang tinggi"
+            ]
+            aa_vals = [get_val(c) for c in aa_cols]
+            aa_vals[2] = 6 - aa_vals[2] # Reverse "saya malas belajar"
+            aa_vals[3] = 6 - aa_vals[3] # Reverse "materi terlalu sulit"
+            data_s["Academic_Anxiety"] = sum(aa_vals) / 5.0
+
+            # Simpan ke Database Survei
+            db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_s}, upsert=True)
+            db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}}, upsert=True)
+            count += 1
+            
+        return count
+
+    # =========================================================
+    # PROSES FILE DATA_SIAP_UPLOAD (Excel yang sudah dirata-rata)
+    # =========================================================
+    else:
+        kolom_nisn = cols_lower.get("nisn") or cols_lower.get("nis")
+        if not kolom_nisn: return 0
+
+        for _, row in df_excel.iterrows():
+            nisn = clean_nisn(row[kolom_nisn])
+            if not nisn: continue
+            
+            data_s = {"NISN": nisn}
+            for k_low, k_asli in cols_lower.items():
+                if any(x in k_low for x in ["self_efficacy", "academic_anxiety", "school_support", "parental_involvement", "learning_motivation"]):
+                    if pd.notna(row[k_asli]): data_s[k_asli] = float(row[k_asli])
+                elif any(x in k_low for x in ["usia", "pendidikan terakhir", "pendapatan", "jarak", "fasilitas", "gadget", "belajar di rumah", "les / bimbingan", "ekstrakurikuler"]):
+                    if pd.notna(row[k_asli]): data_s[k_asli] = row[k_asli]
+            
+            for k_low, k_asli in cols_lower.items():
+                if k_low in ["nama", "nama siswa"]: data_s["Nama"] = row[k_asli]
+                if k_low == "kelas": data_s["Kelas"] = row[k_asli]
+
+            db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_s}, upsert=True)
+            db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}}, upsert=True)
+            count += 1
+
+        return count
 
 def tambah_siswa_baru(nisn, nama, kelas, nilai):
     db = _db()
