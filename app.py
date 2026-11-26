@@ -237,7 +237,7 @@ if st.session_state.logged_in: refresh_pengaruh()
 def render_kuesioner_siswa(nisn, is_preview=False):
     if is_preview:
         st.info(f"👁️ **Mode Pratinjau:** Anda melihat tampilan kuesioner siswa dengan NISN {nisn}.")
-        if st.button("⬅️ Kembali ke Daftar Survei"):
+        if st.button("⬅️ Kembali ke Daftar Survei", key=f"back_preview_{nisn}"):
             st.session_state.current_page = "list_survei"; st.session_state.preview_nisn = None; st.rerun()
     else: st.success(f"✅ Login berhasil! NISN: {nisn}")
         
@@ -544,9 +544,9 @@ elif st.session_state.current_page == "edit_x":
     df = pd.DataFrame(st.session_state.database_siswa)
     if st.session_state.get("edit_nisn") is None or df.empty:
         st.warning("Pilih siswa dulu."); 
-        if st.button("Kembali"): st.session_state.current_page = "list_survei"; st.rerun()
+        if st.button("Kembali", key="back_edit_x_empty"): st.session_state.current_page = "list_survei"; st.rerun()
     else:
-        if st.button("⬅️ Kembali ke Daftar Survei"): st.session_state.current_page = "list_survei"; st.session_state.last_menu = "Jawaban Survei"; st.rerun()
+        if st.button("⬅️ Kembali ke Daftar Survei", key="back_edit_x"): st.session_state.current_page = "list_survei"; st.session_state.last_menu = "Jawaban Survei"; st.rerun()
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
         render_kuesioner_siswa(siswa['NISN'], is_preview=True)
 
@@ -554,9 +554,9 @@ elif st.session_state.current_page == "edit_y":
     df = pd.DataFrame(st.session_state.database_siswa)
     if st.session_state.get("edit_nisn") is None or df.empty:
         st.warning("Pilih siswa dulu.")
-        if st.button("Kembali"): st.session_state.current_page = "list_nilai"; st.rerun()
+        if st.button("Kembali", key="back_edit_y_empty"): st.session_state.current_page = "list_nilai"; st.rerun()
     else:
-        if st.button("⬅️ Kembali ke Daftar Nilai"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
+        if st.button("⬅️ Kembali ke Daftar Nilai", key="back_edit_y"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
         nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
         
@@ -824,7 +824,7 @@ elif st.session_state.current_page == "kausal":
         catatan = st.text_area("Catatan/hipotesis untuk Groq (opsional)", placeholder="mis. Anggap bagian 1 dan 2 sebagai lingkungan sosial yang memengaruhi prestasi melalui bagian 3 dan 4.")
         max_sisi = st.number_input("Maksimum sisi", min_value=1, max_value=50, value=16)
         
-        if st.button("Buat & analisis", type="primary"):
+        if st.button("Buat & analisis", type="primary", key="btn_buat_dag"):
             if not nama_dag or len(nodes_input) < 1: 
                 st.error("Isi Nama DAG dan minimal satu Nama Bagian (Node).")
             else:
@@ -959,7 +959,7 @@ elif st.session_state.current_page == "prediksi":
         p_ortu = st.slider("Dukungan Orang Tua", 1.0, 5.0, BASELINE_ASPEK["Parental_Involvement"], 0.1)
         p_sekolah = st.slider("Dukungan Sekolah", 1.0, 5.0, BASELINE_ASPEK["School_Support"], 0.1)
         
-    if st.button("Hitung Perkiraan Nilai", type="primary"):
+    if st.button("Hitung Perkiraan Nilai", type="primary", key="btn_hitung_prediksi"):
         profil = {"Self_Efficacy": p_se, "Learning_Motivation": p_mot, "Academic_Anxiety": p_cem, "Parental_Involvement": p_ortu, "School_Support": p_sekolah}
         ate_model1 = DAG_MODELS["Model 1: Baseline Direct Effects"]["ate"]
         score = RATA_RATA_NILAI + sum([ate_model1[k] * (v - BASELINE_ASPEK[k]) for k, v in profil.items()])
