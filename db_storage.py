@@ -66,7 +66,6 @@ def login_siswa(nisn, password_plain):
     
     akun = db["siswa_akun"].find_one({"NISN": nisn_clean})
     if not akun:
-        # AUTO-REGISTER
         if str(password_plain).strip() != nisn_clean:
             return False, "NISN belum terdaftar. Untuk mendaftar mandiri, pastikan Password sama dengan NISN Anda."
             
@@ -114,9 +113,27 @@ def hapus_survei_siswa(nisn):
     try:
         db["siswa_akun"].delete_one({"NISN": nisn_clean})
         db["siswa_survei"].delete_one({"NISN": nisn_clean})
+        db["siswa_master"].delete_one({"NISN": nisn_clean}) # TAMBAHAN: Hapus juga master nilainya agar total
         return True, "Data survei dan akun siswa berhasil dihapus. NISN dapat digunakan kembali."
     except Exception as e:
         return False, f"Gagal menghapus: {e}"
+
+# ================================================================
+# FUNGSI BARU: HAPUS NILAI SAJA (SURVEI TETAP AMAN)
+# ================================================================
+def hapus_nilai_saja(nisn):
+    """
+    Menghapus HANYA data nilai siswa (dari siswa_master).
+    Data survei (siswa_survei) dan akun (siswa_akun) TETAP AMAN.
+    """
+    db = _db()
+    nisn_clean = clean_nisn(nisn)
+    try:
+        # Menghapus dokumen nilai di siswa_master
+        db["siswa_master"].delete_one({"NISN": nisn_clean})
+        return True, f"✅ Nilai NISN {nisn_clean} berhasil dihapus. (Survei tetap aman)."
+    except Exception as e:
+        return False, f"Gagal menghapus nilai: {e}"
 
 # ================================================================
 # DATA GABUNGAN (DENGAN FITUR SORTING NISN)
@@ -144,7 +161,7 @@ def get_data_gabungan():
         row["Nilai Akademik"] = m.get("Nilai", 0)
         data_gabungan.append(row)
         
-    # TAMBAHAN: Urutkan berdasarkan NISN terbesar ke terkecil
+    # Urutkan berdasarkan NISN terbesar ke terkecil
     data_gabungan.sort(key=lambda x: str(x.get("NISN", "")), reverse=True)
         
     return data_gabungan
@@ -199,7 +216,6 @@ def get_semua_akun_siswa():
     masters = list(db["siswa_master"].find({}, {"_id": 0}))
     data = [{"NISN": m.get("NISN"), "Nama": m.get("Nama"), "Kelas": m.get("Kelas"), "Password Default": m.get("NISN")} for m in masters]
     
-    # TAMBAHAN: Sortir dataframe berdasarkan NISN
     df = pd.DataFrame(data)
     if not df.empty:
         df["NISN"] = df["NISN"].astype(str)

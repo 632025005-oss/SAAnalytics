@@ -34,7 +34,8 @@ from db_storage import (
     load_users, save_users, login_siswa, simpan_survei_siswa, 
     get_data_gabungan, update_nilai_siswa, tambah_siswa_baru, 
     update_user_password, daftar_user_baru, get_semua_akun_siswa, 
-    import_data_historis_lengkap, reset_password_siswa, hapus_survei_siswa
+    import_data_historis_lengkap, reset_password_siswa, hapus_survei_siswa,
+    hapus_nilai_saja
 )
 
 SUPER_ADMIN = {"admin", "regina"}
@@ -210,46 +211,6 @@ def load_upload_history():
 def save_upload_history(history):
     with open(UPLOAD_HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=4)
-
-# --- FITUR HAPUS NILAI SAJA (UNTUK FITUR UPLOAD EXCEL) ---
-def hapus_nilai_saja(nisn):
-    """
-    Menghapus HANYA data nilai siswa (Nilai Akademik + Nilai_<mapel>).
-    Data survei (Self_Efficacy, dll) TETAP AMAN.
-    """
-    try:
-        df = pd.DataFrame(st.session_state.database_siswa)
-        if df.empty or 'NISN' not in df.columns:
-            return False, "Database kosong."
-        
-        mask = df['NISN'].astype(str) == str(nisn)
-        if not mask.any():
-            return False, "NISN tidak ditemukan."
-        
-        # Deteksi nama kolom nilai (Nilai Akademik + Nilai_mapel)
-        kolom_nilai = {}
-        if 'Nilai Akademik' in df.columns:
-            kolom_nilai['Nilai'] = 0.0
-        
-        mapel_list = get_mapel_list(df)
-        for m in mapel_list:
-            col_name = f"Nilai_{m}" if f"Nilai_{m}" in df.columns else m
-            if col_name in df.columns:
-                kolom_nilai[col_name] = 0.0
-        
-        if not kolom_nilai:
-            return False, "Tidak ada kolom nilai untuk dihapus."
-        
-        # Update pakai fungsi dari db_storage
-        sukses, pesan = update_nilai_siswa(nisn, kolom_nilai)
-        
-        if sukses:
-            refresh_pengaruh()
-            return True, f"✅ Nilai NISN {nisn} berhasil dihapus. (Survei tetap aman)."
-        else:
-            return False, f"Gagal update database: {pesan}"
-    except Exception as e:
-        return False, f"Error: {e}"
 
 def hitung_ols_custom(df, dag_edges):
     if df.empty: return {}
@@ -901,7 +862,6 @@ elif st.session_state.current_page == "list_survei":
             with c5:
                 if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"): reset_password_siswa(row['NISN']); st.success("Direset!"); st.rerun()
             with c6:
-                # Tetap gunakan hapus total di sini agar siswa bisa dihapus bersih
                 if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", type="primary"): 
                     hapus_survei_siswa(row['NISN'])
                     st.success("Siswa dihapus!")
