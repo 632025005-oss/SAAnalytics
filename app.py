@@ -9,6 +9,8 @@ import hashlib
 import io
 import re
 import math
+import json
+import os
 from openpyxl import Workbook
 from streamlit_option_menu import option_menu
 import pytz
@@ -36,6 +38,7 @@ from db_storage import (
 )
 
 SUPER_ADMIN = {"admin", "regina"}
+UPLOAD_HISTORY_FILE = "upload_history.json"
 
 # ================================================================
 # ★ FUNGSI PARSER & KONSTANTA
@@ -194,6 +197,20 @@ def get_mapel_list(df):
 def clean_filename(text):
     return re.sub(r'[\\/*?:"<>|]', "", str(text))
 
+# --- FITUR RIWAYAT UPLOAD ---
+def load_upload_history():
+    if os.path.exists(UPLOAD_HISTORY_FILE):
+        try:
+            with open(UPLOAD_HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_upload_history(history):
+    with open(UPLOAD_HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=4)
+
 def hitung_ols_custom(df, dag_edges):
     if df.empty: return {}
     nodes = list(set([e[0] for e in dag_edges]))
@@ -226,7 +243,6 @@ def terjemah_efek(beta, pval):
 # NARASI LAPORAN (BAHASA AWAM)
 # ================================================================
 def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
-    """Narasi ringkas: profil nilai & faktor pendukung/penghambat (tanpa rekomendasi)."""
     nama = str(siswa.get("Nama", ""))
     naik = [k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1]
     turun = [k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1]
@@ -255,7 +271,6 @@ def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
 
 
 def _generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list):
-    """Rekomendasi spesifik & actionable untuk guru/wali kelas."""
     nama = str(siswa.get("Nama", ""))
     naik = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1], key=lambda x: x["Pengaruh (Poin)"], reverse=True)
     turun = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1], key=lambda x: x["Pengaruh (Poin)"])
@@ -298,7 +313,6 @@ def _generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list):
 
 
 def _generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi_list):
-    """Rekomendasi spesifik & actionable untuk orang tua/wali di rumah."""
     nama = str(siswa.get("Nama", ""))
     naik = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1], key=lambda x: x["Pengaruh (Poin)"], reverse=True)
     turun = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1], key=lambda x: x["Pengaruh (Poin)"])
@@ -381,14 +395,12 @@ def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
         doc.add_paragraph(line)
     doc.add_paragraph()
 
-    # ── REKOMENDASI GURU ──
     doc.add_heading('Rekomendasi untuk Guru', level=1)
     doc.add_paragraph("Berikut langkah konkret yang dapat dilakukan guru/wali kelas:")
     for i, rec in enumerate(_generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list), 1):
         doc.add_paragraph(f"{i}. {rec}")
     doc.add_paragraph()
 
-    # ── REKOMENDASI ORANG TUA ──
     doc.add_heading('Rekomendasi untuk Orang Tua', level=1)
     doc.add_paragraph("Berikut langkah konkret yang dapat dilakukan orang tua/wali di rumah:")
     for i, rec in enumerate(_generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi_list), 1):
@@ -456,14 +468,12 @@ def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
         if line.strip():
             cetak_teks(line, font_size=10)
 
-    # ── REKOMENDASI GURU ──
     pdf.ln(4)
     cetak_teks('Rekomendasi untuk Guru', font_style='B', font_size=12, spasi=8)
     cetak_teks('Berikut langkah konkret yang dapat dilakukan guru/wali kelas:', font_size=10)
     for i, rec in enumerate(_generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list), 1):
         cetak_teks(f"{i}. {rec}", font_size=10)
 
-    # ── REKOMENDASI ORANG TUA ──
     pdf.ln(4)
     cetak_teks('Rekomendasi untuk Orang Tua', font_style='B', font_size=12, spasi=8)
     cetak_teks('Berikut langkah konkret yang dapat dilakukan orang tua/wali di rumah:', font_size=10)
@@ -512,7 +522,7 @@ for key, val in {
     "siswa_login_nisn": None, "edit_nisn": None, "preview_nisn": None,
     "edit_back_page": "monitoring",
     "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None,
-    "confirm_delete_all": False, "confirm_delete_kelas": None
+    "confirm_delete_all": False, "confirm_delete_upload": None
 }.items():
     if key not in st.session_state: st.session_state[key] = val
 
@@ -716,15 +726,29 @@ elif st.session_state.current_page == "monitoring":
                 st.dataframe(df_upload.head())
                 if st.button("Simpan Nilai ke Database", type="primary"):
                     count = import_data_historis_lengkap(df_upload)
+                    
+                    # Simpan ke Riwayat Upload
+                    if 'NISN' in df_upload.columns:
+                        nisn_list = [str(n) for n in df_upload['NISN'].dropna().unique().tolist()]
+                        history = load_upload_history()
+                        history.append({
+                            "id": str(datetime.now().timestamp()),
+                            "filename": uploaded.name,
+                            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "count": count,
+                            "nisns": nisn_list
+                        })
+                        save_upload_history(history)
+
                     st.success(f"✅ {count} data dimasukkan!"); refresh_pengaruh(); st.rerun()
             except Exception as e: st.error(f"Error: {e}")
 
     with tab_daftar:
         df_siswa = pd.DataFrame(st.session_state.database_siswa)
         if not df_siswa.empty:
-            # --- PANEL HAPUS MASSAL (HAPUS SEMUA & HAPUS PER KELAS) ---
+            # --- PANEL HAPUS MASSAL ---
             st.markdown("### ⚙️ Pengaturan & Hapus Data")
-            col_hapus_semua, col_hapus_kelas = st.columns(2)
+            col_hapus_semua, col_hapus_upload = st.columns(2)
 
             with col_hapus_semua:
                 st.markdown("**Hapus Seluruh Data**")
@@ -746,32 +770,40 @@ elif st.session_state.current_page == "monitoring":
                         st.session_state.confirm_delete_all = False
                         st.rerun()
 
-            with col_hapus_kelas:
-                st.markdown("**Hapus Berdasarkan Kelas (Batch Upload)**")
-                st.caption("Gunakan ini jika salah *upload* data satu kelas.")
-                kelas_options = df_siswa['Kelas'].dropna().astype(str).unique().tolist()
-                if kelas_options:
-                    kelas_pilihan = st.selectbox("Pilih Kelas:", kelas_options, key="hapus_kelas_select")
+            with col_hapus_upload:
+                st.markdown("**Hapus Berdasarkan Riwayat Upload**")
+                st.caption("Gunakan ini jika salah *upload* data Excel.")
+                
+                history = load_upload_history()
+                if history:
+                    # Urutkan dari yang terbaru
+                    history_sorted = sorted(history, key=lambda x: x['date'], reverse=True)
+                    options = {f"{h['filename']} | {h['date']} ({h['count']} data)": h for h in history_sorted}
+                    pilihan = st.selectbox("Pilih Riwayat Upload:", list(options.keys()), key="hapus_upload_select")
                     
-                    if not st.session_state.confirm_delete_kelas:
-                        if st.button(f"🗑️ Hapus Data Kelas {kelas_pilihan}", type="primary", use_container_width=True):
-                            st.session_state.confirm_delete_kelas = kelas_pilihan
+                    if not st.session_state.confirm_delete_upload:
+                        if st.button(f"🗑️ Hapus Data Upload Ini", type="primary", use_container_width=True):
+                            st.session_state.confirm_delete_upload = pilihan
                             st.rerun()
                     else:
-                        st.warning(f"Yakin menghapus semua siswa di Kelas {st.session_state.confirm_delete_kelas}?")
+                        st.warning(f"Yakin menghapus data dari upload **{st.session_state.confirm_delete_upload}**?")
                         c_yes, c_no = st.columns(2)
-                        if c_yes.button("Ya, Hapus Kelas Ini", key="yes_del_kelas", type="primary"):
-                            nisn_list = df_siswa[df_siswa['Kelas'] == st.session_state.confirm_delete_kelas]['NISN'].tolist()
-                            for n in nisn_list:
-                                hapus_survei_siswa(n)
-                            st.session_state.confirm_delete_kelas = None
-                            st.success(f"Data Kelas {kelas_pilihan} berhasil dihapus!")
+                        if c_yes.button("Ya, Hapus", key="yes_del_upload", type="primary"):
+                            selected_batch = options.get(st.session_state.confirm_delete_upload)
+                            if selected_batch:
+                                for n in selected_batch['nisns']:
+                                    hapus_survei_siswa(n)
+                                # Remove from history
+                                history = [h for h in history if h['id'] != selected_batch['id']]
+                                save_upload_history(history)
+                            st.session_state.confirm_delete_upload = None
+                            st.success("Data dari upload tersebut berhasil dihapus!")
                             refresh_pengaruh(); st.rerun()
-                        if c_no.button("Batal", key="no_del_kelas"):
-                            st.session_state.confirm_delete_kelas = None
+                        if c_no.button("Batal", key="no_del_upload"):
+                            st.session_state.confirm_delete_upload = None
                             st.rerun()
                 else:
-                    st.info("Belum ada data kelas.")
+                    st.info("Belum ada riwayat upload file Excel.")
 
             st.markdown("---")
 
@@ -910,7 +942,6 @@ elif st.session_state.current_page == "edit_siswa_lengkap":
     else:
         back_page = st.session_state.get("edit_back_page", "monitoring")
         
-        # Tombol Kembali di atas
         if st.button("⬅️ Kembali ke Daftar", key="back_edit_siswa"):
             st.session_state.current_page = back_page
             for k, v in mapping_menu.items():
@@ -958,13 +989,10 @@ elif st.session_state.current_page == "edit_siswa_lengkap":
                     else:
                         st.error(f"Gagal: {pesan}")
 
-        # TAMPILAN DINAMIS BERDASARKAN ASAL MENU
         if back_page == "list_nilai":
-            # HANYA TAMPILKAN FORM NILAI (TANPA TAB SURVEI)
             st.markdown(f"### Input Nilai per Mata Pelajaran — {siswa['Nama']}")
             render_form_nilai_siswa(siswa)
         else:
-            # TAMPILKAN TAB (SURVEI & NILAI) JIKA DARI MANAJEMEN SISWA
             st.markdown(f"### Edit Data Siswa: {siswa['Nama']} ({siswa['NISN']})")
             tab_survei, tab_nilai = st.tabs(["📝 Kuesioner & Identitas", "📊 Nilai Mata Pelajaran"])
             
