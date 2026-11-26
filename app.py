@@ -226,6 +226,7 @@ def terjemah_efek(beta, pval):
 # NARASI LAPORAN (BAHASA AWAM)
 # ================================================================
 def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
+    """Narasi ringkas: profil nilai & faktor pendukung/penghambat (tanpa rekomendasi)."""
     nama = str(siswa.get("Nama", ""))
     naik = [k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1]
     turun = [k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1]
@@ -234,36 +235,106 @@ def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
 
     narasi = [
         f"Nilai akademik {nama} saat ini berada di angka {nilai:.2f} dengan predikat {kat}.",
-        f"Berdasarkan hasil analisis, terdapat beberapa faktor yang membuat nilai {nama} bisa seperti ini:",
+        f"Berdasarkan hasil analisis, terdapat beberapa faktor yang mempengaruhi nilai {nama}:",
         ""
     ]
-    
     if naik:
         narasi.append("Faktor yang Membantu Menaikkan Nilai:")
         for i, k in enumerate(naik, 1):
             narasi.append(f"  {i}. {k['Faktor']} (memberikan dorongan positif sebesar +{k['Pengaruh (Poin)']:.2f} poin)")
         narasi.append("")
-        
     if turun:
         narasi.append("Faktor yang Menarik Nilai ke Bawah:")
         for i, k in enumerate(turun, 1):
             narasi.append(f"  {i}. {k['Faktor']} (menurunkan nilai sebesar {k['Pengaruh (Poin)']:.2f} poin)")
         narasi.append("")
-        
     if not naik and not turun:
         narasi.append(f"Secara umum, kondisi psikologis dan lingkungan {nama} sudah seimbang dan berada di rata-rata sekolah. Tidak ada faktor yang menonjol.")
         narasi.append("")
-
-    narasi.append("Rekomendasi Praktis untuk Guru & Orang Tua:")
-    if naik:
-        narasi.append(f"  - Terus pertahankan dan puji faktor {naik[0]['Faktor']} yang sudah bagus. Ini adalah kekuatan utama {nama}.")
-    if turun:
-        narasi.append(f"  - Berikan perhatian lebih pada {turun[0]['Faktor']}. Ajak {nama} berdiskusi atau berikan dukungan agar faktor ini tidak menghambat belajarnya.")
-    if not naik and not turun:
-        narasi.append(f"  - Ajak {nama} untuk terus mempertahankan semangat belajarnya dan jangan ragu untuk mencoba hal-hal baru agar nilainya bisa lebih maksimal.")
-    narasi.append(f"  - Berikan apresiasi atas usaha {nama} sejauh ini, karena nilai {nilai:.2f} merupakan hasil kerja kerasnya.")
-
     return "\n".join(narasi)
+
+
+def _generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list):
+    """Rekomendasi spesifik & actionable untuk guru/wali kelas."""
+    nama = str(siswa.get("Nama", ""))
+    naik = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1], key=lambda x: x["Pengaruh (Poin)"], reverse=True)
+    turun = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1], key=lambda x: x["Pengaruh (Poin)"])
+
+    rekomendasi = []
+    if naik:
+        top = naik[0]["Faktor"]
+        peta_kuat = {
+            "Percaya Diri": f"Pertahankan pemberian tugas menantang yang terukur agar rasa percaya diri {nama} terus tumbuh di kelas.",
+            "Semangat Belajar": f"Berikan apresiasi (pujian di depan kelas) atas usaha belajar {nama}, bukan hanya hasil akhirnya.",
+            "Dukungan Orang Tua": f"Libatkan orang tua dalam kegiatan kelas (mis. proyek/presentasi) agar dukungan belajar {nama} tetap konsisten.",
+            "Dukungan Sekolah": f"Pertahankan komunikasi positif dan perhatian personal kepada {nama}, karena ia merasa didukung lingkungan sekolah.",
+            "Rasa Cemas": f"Salurkan rasa cemas {nama} menjadi motivasi melalui target belajar bertahap dan umpan balik yang jelas.",
+        }
+        rekomendasi.append(peta_kuat.get(top, f"Pertahankan faktor {top} yang sudah menjadi kekuatan utama {nama}."))
+
+    if turun:
+        worst = turun[0]["Faktor"]
+        peta_lemah = {
+            "Percaya Diri": f"Berikan scaffolding dan tugas bertahap yang bisa diselesaikan agar {nama} merasakan keberhasilan kecil setiap hari.",
+            "Semangat Belajar": f"Variasikan metode pembelajaran dan hubungkan materi dengan minat/kehidupan sehari-hari {nama}.",
+            "Dukungan Orang Tua": f"Lakukan komunikasi intensif dengan orang tua (WA/kartu kontrol) agar dukungan belajar di rumah meningkat.",
+            "Dukungan Sekolah": f"Perkuat interaksi personal dengan {nama} — tanyakan langsung kesulitan belajarnya.",
+            "Rasa Cemas": f"Ciptakan suasana kelas yang tidak menghakimi; berikan tes formatif tanpa tekanan agar kecemasan {nama} terkendali.",
+        }
+        rekomendasi.append(peta_lemah.get(worst, f"Berikan perhatian khusus pada faktor {worst} yang menghambat belajar {nama}."))
+
+    if kat == "Perlu Perhatian":
+        rekomendasi.append(f"Lakukan remedial terarah dan pantau progres {nama} secara mingguan melalui jurnal belajar.")
+    elif kat == "Sangat Baik":
+        rekomendasi.append(f"Berikan tantangan pengayaan (soal HOTS / proyek mandiri) agar {nama} tidak kehilangan tantangan belajar.")
+    elif kat == "Baik":
+        rekomendasi.append(f"Pertahankan kualitas pembelajaran dan berikan umpan balik konstruktif secara rutin.")
+    else:
+        rekomendasi.append(f"Fokus pada penguatan konsep dasar dan berikan latihan tambahan secara berkala.")
+
+    if not rekomendasi:
+        rekomendasi.append(f"Lanjutkan pendekatan pembelajaran yang sudah berjalan baik dan pantau perkembangan {nama} secara berkala.")
+    return rekomendasi
+
+
+def _generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi_list):
+    """Rekomendasi spesifik & actionable untuk orang tua/wali di rumah."""
+    nama = str(siswa.get("Nama", ""))
+    naik = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1], key=lambda x: x["Pengaruh (Poin)"], reverse=True)
+    turun = sorted([k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1], key=lambda x: x["Pengaruh (Poin)"])
+
+    rekomendasi = []
+    if naik:
+        top = naik[0]["Faktor"]
+        peta_kuat = {
+            "Percaya Diri": f"Terus beri pujian atas usaha {nama} (bukan hanya hasil), agar rasa percaya dirinya terjaga di rumah.",
+            "Semangat Belajar": f"Dukung minat {nama} dengan menyediakan buku/alat belajar yang sesuai dengan ketertarikannya.",
+            "Dukungan Orang Tua": f"Pertahankan kebiasaan mendampingi {nama} belajar dan menanyakan kegiatan sekolahnya setiap hari.",
+            "Dukungan Sekolah": f"Jaga komunikasi rutin dengan wali kelas / guru BK agar dukungan sekolah kepada {nama} tetap optimal.",
+            "Rasa Cemas": f"Bantu {nama} mengelola rasa cemas dengan jadwal belajar teratur, bukan menambah tekanan nilai.",
+        }
+        rekomendasi.append(peta_kuat.get(top, f"Pertahankan dukungan yang sudah menjadi kekuatan utama {nama}."))
+
+    if turun:
+        worst = turun[0]["Faktor"]
+        peta_lemah = {
+            "Percaya Diri": f"Hindari membandingkan {nama} dengan saudara/teman. Fokus pada kemajuan kecil yang sudah dicapai.",
+            "Semangat Belajar": f"Ajak {nama} berdiskusi tentang cita-citanya dan hubungkan dengan pentingnya belajar saat ini.",
+            "Dukungan Orang Tua": f"Luangkan minimal 30 menit/hari untuk mendampingi {nama} belajar dan menanyakan tugas sekolahnya.",
+            "Dukungan Sekolah": f"Hadir di pertemuan orang tua/wali dan tanyakan perkembangan {nama} secara aktif kepada guru.",
+            "Rasa Cemas": f"Kurangi tuntutan nilai tinggi pada {nama}; ganti dengan target proses (mis. 'belajar 1 jam tiap hari').",
+        }
+        rekomendasi.append(peta_lemah.get(worst, f"Berikan perhatian lebih pada aspek {worst} yang menghambat belajar {nama} di rumah."))
+
+    if kat == "Perlu Perhatian":
+        rekomendasi.append(f"Konsultasikan dengan guru/wali kelas untuk program belajar tambahan di rumah bagi {nama}.")
+    elif kat == "Sangat Baik":
+        rekomendasi.append(f"Berikan apresiasi dan tetap dampingi {nama} agar tidak kehilangan momentum belajar.")
+    else:
+        rekomendasi.append(f"Ciptakan suasana rumah yang kondusif untuk belajar dan hindari gangguan gadget saat jam belajar.")
+
+    rekomendasi.append(f"Bangun komunikasi terbuka dengan {nama} — tanyakan perasaannya tentang sekolah, bukan hanya nilainya.")
+    return rekomendasi
 
 # ================================================================
 # GENERATOR WORD & PDF
@@ -304,10 +375,24 @@ def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
         row[1].text = f"{k['Pengaruh (Poin)']:+.2f}"
     doc.add_paragraph()
 
-    doc.add_heading('Kesimpulan & Rekomendasi', level=1)
+    doc.add_heading('Kesimpulan', level=1)
     narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
     for line in narasi.split("\n"):
         doc.add_paragraph(line)
+    doc.add_paragraph()
+
+    # ── REKOMENDASI GURU ──
+    doc.add_heading('Rekomendasi untuk Guru', level=1)
+    doc.add_paragraph("Berikut langkah konkret yang dapat dilakukan guru/wali kelas:")
+    for i, rec in enumerate(_generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list), 1):
+        doc.add_paragraph(f"{i}. {rec}")
+    doc.add_paragraph()
+
+    # ── REKOMENDASI ORANG TUA ──
+    doc.add_heading('Rekomendasi untuk Orang Tua', level=1)
+    doc.add_paragraph("Berikut langkah konkret yang dapat dilakukan orang tua/wali di rumah:")
+    for i, rec in enumerate(_generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi_list), 1):
+        doc.add_paragraph(f"{i}. {rec}")
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -328,44 +413,36 @@ def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
 
     def cetak_teks(teks, font_style='', font_size=11, align='L', spasi=6):
         pdf.set_font('Helvetica', font_style, font_size)
-        pdf.set_x(pdf.l_margin) # Paksa posisi X kembali ke kiri
+        pdf.set_x(pdf.l_margin)
         pdf.multi_cell(w=lebar_kertas, h=spasi, text=clean(teks), align=align)
-        pdf.set_x(pdf.l_margin) # Pastikan X di kiri untuk pemanggilan berikutnya
+        pdf.set_x(pdf.l_margin)
 
-    # Judul
     cetak_teks('Laporan Hasil Analisis Prestasi Siswa', font_style='B', font_size=16, align='C', spasi=10)
     cetak_teks(f"Tanggal: {datetime.now().strftime('%d %B %Y')}", font_style='I', font_size=10, align='C', spasi=6)
     pdf.ln(5)
 
-    # Identitas
     cetak_teks('Identitas Siswa', font_style='B', font_size=12, spasi=8)
     cetak_teks(f"Nama: {siswa.get('Nama', '-')}")
     cetak_teks(f"NISN: {siswa.get('NISN', '-')}")
     cetak_teks(f"Kelas: {siswa.get('Kelas', '-')}")
     pdf.ln(3)
 
-    # Nilai
     cetak_teks('Nilai Akademik', font_style='B', font_size=12, spasi=8)
     cetak_teks(f"Nilai Rata-rata: {nilai:.2f}")
     cetak_teks(f"Kategori: {kat}")
     pdf.ln(3)
 
-    # Model
     cetak_teks('Model Analisis', font_style='B', font_size=12, spasi=8)
     cetak_teks(dag_pilihan)
     pdf.ln(3)
 
-    # Tabel Kontribusi
     cetak_teks('Kontribusi Faktor', font_style='B', font_size=12, spasi=8)
-    
     w1 = lebar_kertas * 0.6
     w2 = lebar_kertas * 0.4
-    
     pdf.set_font('Helvetica', 'B', 10)
     pdf.set_x(pdf.l_margin)
     pdf.cell(w1, 7, "Faktor", border=1)
     pdf.cell(w2, 7, "Pengaruh (Poin)", border=1, ln=True)
-    
     pdf.set_font('Helvetica', '', 10)
     for k in kontribusi_list:
         pdf.set_x(pdf.l_margin)
@@ -373,12 +450,25 @@ def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
         pdf.cell(w2, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
     pdf.ln(5)
 
-    # Narasi
-    cetak_teks('Kesimpulan & Rekomendasi', font_style='B', font_size=12, spasi=8)
+    cetak_teks('Kesimpulan', font_style='B', font_size=12, spasi=8)
     narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
     for line in narasi.split("\n"):
         if line.strip():
             cetak_teks(line, font_size=10)
+
+    # ── REKOMENDASI GURU ──
+    pdf.ln(4)
+    cetak_teks('Rekomendasi untuk Guru', font_style='B', font_size=12, spasi=8)
+    cetak_teks('Berikut langkah konkret yang dapat dilakukan guru/wali kelas:', font_size=10)
+    for i, rec in enumerate(_generate_rekomendasi_guru(siswa, nilai, kat, kontribusi_list), 1):
+        cetak_teks(f"{i}. {rec}", font_size=10)
+
+    # ── REKOMENDASI ORANG TUA ──
+    pdf.ln(4)
+    cetak_teks('Rekomendasi untuk Orang Tua', font_style='B', font_size=12, spasi=8)
+    cetak_teks('Berikut langkah konkret yang dapat dilakukan orang tua/wali di rumah:', font_size=10)
+    for i, rec in enumerate(_generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi_list), 1):
+        cetak_teks(f"{i}. {rec}", font_size=10)
 
     return io.BytesIO(bytes(pdf.output()))
 
@@ -916,10 +1006,24 @@ elif st.session_state.current_page == "rangkuman":
             fig.update_layout(height=300, coloraxis_showscale=False)
             st.plotly_chart(fig, use_container_width=True)
 
-            st.markdown("### Kesimpulan & Rekomendasi")
+            st.markdown("### Kesimpulan")
             narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi)
             st.markdown(
                 f"""<div style="background:#f8fafc; padding:1.5rem; border-radius:8px; border-left:4px solid #0d9488; white-space: pre-wrap; line-height:1.8;">{narasi}</div>""",
+                unsafe_allow_html=True
+            )
+
+            st.markdown("### 👨‍🏫 Rekomendasi untuk Guru")
+            guru_html = "".join([f"<li>{r}</li>" for r in _generate_rekomendasi_guru(siswa, nilai, kat, kontribusi)])
+            st.markdown(
+                f"""<div style="background:#eff6ff; padding:1.5rem; border-radius:8px; border-left:4px solid #2563eb; line-height:1.8;"><ol style="margin:0; padding-left:1.5rem;">{guru_html}</ol></div>""",
+                unsafe_allow_html=True
+            )
+
+            st.markdown("### 👨‍👩‍👧 Rekomendasi untuk Orang Tua")
+            ortu_html = "".join([f"<li>{r}</li>" for r in _generate_rekomendasi_orangtua(siswa, nilai, kat, kontribusi)])
+            st.markdown(
+                f"""<div style="background:#fef3c7; padding:1.5rem; border-radius:8px; border-left:4px solid #f59e0b; line-height:1.8;"><ol style="margin:0; padding-left:1.5rem;">{ortu_html}</ol></div>""",
                 unsafe_allow_html=True
             )
 
@@ -1334,7 +1438,7 @@ elif st.session_state.current_page == "tentang":
 
     1. 🎒 **Portal Siswa**: Siswa mendaftar sendiri menggunakan NISN, lalu mengisi survei psikologis. (Guru juga bisa membagikan link ini ke siswa).
     2. 📊 **Menu Nilai Raport**: Guru dapat memasukkan nilai siswa untuk setiap mata pelajaran (Matematika, IPA, dll). Sistem akan otomatis menghitung rata-ratanya.
-    3. 📄 **Laporan Siswa**: Fitur unggulan untuk melihat faktor apa saja yang membuat nilai siswa naik atau turun. Laporan ini disajikan dengan bahasa yang mudah dipahami, dan **bisa diunduh dalam bentuk Word atau PDF**.
+    3. 📄 **Laporan Siswa**: Fitur unggulan untuk melihat faktor apa saja yang membuat nilai siswa naik atau turun. Laporan ini disajikan dengan bahasa yang mudah dipahami, dan **bisa diunduh dalam bentuk Word atau PDF** — lengkap dengan **rekomendasi terpisah untuk Guru dan Orang Tua**.
     4. 🧠 **Analisis Faktor**: Guru bisa melihat gambar diagram (DAG) yang menjelaskan hubungan sebab-akibat dari nilai siswa. Semakin banyak data, semakin akurat analisisnya.
     """)
 
