@@ -318,46 +318,51 @@ def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     def clean(t):
         # Hanya izinkan karakter ASCII (mencegah error encoding PDF)
         s = str(t).encode('ascii', 'ignore').decode('ascii')
-        return s if s.strip() else " "
+        return s if s.strip() else "-"
 
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_margins(15, 15, 15)
 
+    # Judul
     pdf.set_font('Helvetica', 'B', 16)
-    pdf.multi_cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', align='C')
+    pdf.cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', ln=True, align='C')
     pdf.set_font('Helvetica', 'I', 10)
-    pdf.multi_cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", align='C')
+    pdf.cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", ln=True, align='C')
     pdf.ln(5)
 
+    # Identitas
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.multi_cell(0, 8, 'Identitas Siswa')
+    pdf.cell(0, 8, 'Identitas Siswa', ln=True)
     pdf.set_font('Helvetica', '', 11)
-    pdf.multi_cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"))
-    pdf.multi_cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"))
-    pdf.multi_cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"))
+    pdf.cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"), ln=True)
+    pdf.cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"), ln=True)
+    pdf.cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"), ln=True)
     pdf.ln(3)
 
+    # Nilai
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.multi_cell(0, 8, 'Nilai Akademik')
+    pdf.cell(0, 8, 'Nilai Akademik', ln=True)
     pdf.set_font('Helvetica', '', 11)
-    pdf.multi_cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}")
-    pdf.multi_cell(0, 6, clean(f"Kategori: {kat}"))
+    pdf.cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}", ln=True)
+    pdf.cell(0, 6, clean(f"Kategori: {kat}"), ln=True)
     pdf.ln(3)
 
+    # Model
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.multi_cell(0, 8, 'Model Analisis')
+    pdf.cell(0, 8, 'Model Analisis', ln=True)
     pdf.set_font('Helvetica', '', 11)
     pdf.multi_cell(0, 6, clean(dag_pilihan))
     pdf.ln(3)
 
+    # Tabel Kontribusi
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.multi_cell(0, 8, 'Kontribusi Faktor')
+    pdf.cell(0, 8, 'Kontribusi Faktor', ln=True)
     
     pdf.set_font('Helvetica', 'B', 10)
-    w1 = 90
-    w2 = pdf.w - 15 - 15 - w1
+    w1 = 80
+    w2 = 80
     pdf.cell(w1, 7, "Faktor", border=1)
     pdf.cell(w2, 7, "Pengaruh (Poin)", border=1, ln=True)
     
@@ -367,12 +372,15 @@ def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
         pdf.cell(w2, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
     pdf.ln(5)
 
+    # Narasi
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.multi_cell(0, 8, 'Kesimpulan & Rekomendasi')
+    pdf.cell(0, 8, 'Kesimpulan & Rekomendasi', ln=True)
     pdf.set_font('Helvetica', '', 10)
     narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
+    
     for line in narasi.split("\n"):
-        pdf.multi_cell(0, 6, clean(line))
+        if line.strip():
+            pdf.multi_cell(0, 6, clean(line))
 
     return io.BytesIO(bytes(pdf.output()))
 
@@ -414,7 +422,8 @@ for key, val in {
     "logged_in": False, "user_nama": None, "user_role": None,
     "database_siswa": [], "current_page": "home", "last_menu": "Beranda",
     "siswa_login_nisn": None, "edit_nisn": None, "preview_nisn": None,
-    "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None
+    "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None,
+    "confirm_delete_all": False
 }.items():
     if key not in st.session_state: st.session_state[key] = val
 
@@ -595,7 +604,7 @@ if st.session_state.current_page == "home":
         st.markdown(f"""<ul style="list-style-type: none; padding-left: 0; font-size: 0.9rem; line-height: 2; color: #475569;"><li>📄 <b>{x_belum_isi} siswa</b> belum mengisi survei</li></ul><hr></div>""", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: MANAJEMEN SISWA
+# HALAMAN: MANAJEMEN SISWA (DENGAN RINCIAN MAPEL & HAPUS DATA)
 # ================================================================
 elif st.session_state.current_page == "monitoring":
     st.title("Daftar & Manajemen Siswa")
@@ -627,22 +636,63 @@ elif st.session_state.current_page == "monitoring":
     with tab_daftar:
         df_siswa = pd.DataFrame(st.session_state.database_siswa)
         if not df_siswa.empty:
+            # --- FITUR HAPUS SEMUA ---
+            col_del_all1, col_del_all2 = st.columns([8, 2])
+            with col_del_all2:
+                if not st.session_state.confirm_delete_all:
+                    if st.button("🗑️ Hapus Semua Siswa", type="primary", use_container_width=True):
+                        st.session_state.confirm_delete_all = True
+                        st.rerun()
+                else:
+                    st.warning("Yakin ingin menghapus SEMUA data siswa secara permanen?")
+                    c_yes, c_no = st.columns(2)
+                    if c_yes.button("Ya, Hapus", key="yes_del_all", type="primary"):
+                        for nisn in df_siswa['NISN'].unique():
+                            hapus_survei_siswa(nisn)
+                        st.session_state.confirm_delete_all = False
+                        st.success("Semua data siswa telah dihapus.")
+                        refresh_pengaruh(); st.rerun()
+                    if c_no.button("Batal", key="no_del_all"):
+                        st.session_state.confirm_delete_all = False
+                        st.rerun()
+            st.markdown("---")
+
+            mapel_list = get_mapel_list(df_siswa)
+
             for idx, row in df_siswa.iterrows():
-                c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 2, 1, 2, 1.5])
-                c1.write(f"**{row.get('NISN', '-')}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Kelas: {row.get('Kelas', '-')}"); c5.write(f"Nilai: {row.get('Nilai Akademik', '0')}")
+                c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 2, 2, 2, 1.5])
+                c1.write(f"**{row.get('NISN', '-')}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Kelas: {row.get('Kelas', '-')}")
+                c4.write(f"Rata-rata: **{safe_float(row.get('Nilai Akademik', 0)):.2f}**")
+                
+                # Rincian per mapel di dalam expander
+                with c5:
+                    ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
+                    if ada_mapel:
+                        with st.expander("📋 Mapel"):
+                            for m in mapel_list:
+                                col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
+                                if col_name in row.index and pd.notna(row[col_name]):
+                                    st.write(f"- {m}: **{safe_float(row[col_name]):.2f}**")
+                    else:
+                        st.caption("Tidak ada mapel")
+
                 with c6:
-                    b1, b2 = st.columns(2)
-                    if b1.button("👁️ Portal", key=f"prev_{row['NISN']}"): 
+                    b1, b2, b3 = st.columns(3)
+                    if b1.button("👁️", key=f"prev_{row['NISN']}", help="Portal"): 
                         st.session_state.edit_nisn = row['NISN']
                         st.session_state.current_page = "edit_x"
                         st.session_state.last_menu = "Jawaban Survei"
                         st.rerun()
-                    if b2.button("✏️ Edit", key=f"edit_{row['NISN']}"): 
+                    if b2.button("✏️", key=f"edit_{row['NISN']}", help="Edit"): 
                         st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
+                    if b3.button("🗑️", key=f"del_siswa_{row['NISN']}", help="Hapus"): 
+                        hapus_survei_siswa(row['NISN'])
+                        st.success("Siswa dihapus!")
+                        refresh_pengaruh(); st.rerun()
                 st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: DAFTAR SURVEI (PAGINATION)
+# HALAMAN: DAFTAR SURVEI
 # ================================================================
 elif st.session_state.current_page == "list_survei":
     st.title("Data Survei Siswa")
@@ -687,7 +737,7 @@ elif st.session_state.current_page == "list_survei":
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): st.session_state.page_survei += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL DINAMIS)
+# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL)
 # ================================================================
 elif st.session_state.current_page == "list_nilai":
     st.title("Data Nilai Raport Siswa")
@@ -718,7 +768,6 @@ elif st.session_state.current_page == "list_nilai":
                     st.session_state.edit_nisn = row['NISN']
                     st.session_state.current_page = "edit_y"; st.rerun()
 
-            # Deteksi apakah ada data mapel
             ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
             
             if ada_mapel:
@@ -768,7 +817,7 @@ elif st.session_state.current_page == "edit_x":
         render_kuesioner_siswa(siswa['NISN'], is_preview=True)
 
 # ================================================================
-# HALAMAN: EDIT NILAI (PER MATA PELAJARAN DINAMIS)
+# HALAMAN: EDIT NILAI (PER MATA PELAJARAN)
 # ================================================================
 elif st.session_state.current_page == "edit_y":
     df = pd.DataFrame(st.session_state.database_siswa)
@@ -812,7 +861,6 @@ elif st.session_state.current_page == "edit_y":
             if st.form_submit_button("Simpan Nilai", type="primary"):
                 payload = {"Nilai": rata}
                 for m, v in nilai_per_mapel.items():
-                    # Simpan dengan prefix "Nilai_" agar konsisten, atau simpan nama aslinya
                     payload[f"Nilai_{m}"] = v
                 sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
                 if sukses:
@@ -881,7 +929,6 @@ elif st.session_state.current_page == "rangkuman":
             st.markdown("### 📥 Unduh Laporan")
             st.caption("Unduh laporan dalam format Word (.docx) atau PDF untuk dokumentasi.")
 
-            # Format Nama File: Laporan (Nama, NISN)
             safe_nama = clean_filename(siswa.get('Nama', 'Siswa'))
             safe_nisn = clean_filename(siswa.get('NISN', ''))
             base_filename = f"Laporan ({safe_nama}, {safe_nisn})"
@@ -902,7 +949,7 @@ elif st.session_state.current_page == "rangkuman":
                     except Exception as e:
                         st.error(f"Gagal generate Word: {e}")
                 else:
-                    st.warning("`python-docx` belum ter-install. Tambahkan ke requirements.txt.")
+                    st.warning("`python-docx` belum ter-install.")
 
             with col_p:
                 if HAS_FPDF:
@@ -919,7 +966,7 @@ elif st.session_state.current_page == "rangkuman":
                     except Exception as e:
                         st.error(f"Gagal generate PDF: {e}")
                 else:
-                    st.warning("`fpdf2` belum ter-install. Tambahkan ke requirements.txt.")
+                    st.warning("`fpdf2` belum ter-install.")
 
 # ================================================================
 # HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG)
@@ -1284,7 +1331,14 @@ elif st.session_state.current_page == "akun":
 
 elif st.session_state.current_page == "tentang":
     st.title("Panduan Penggunaan Aplikasi")
-    st.markdown("1. **Portal Siswa**: Siswa mendaftar mandiri dan mengisi survei.\n2. **Menu Nilai Raport**: Guru menginput nilai per mata pelajaran.\n3. **Laporan Siswa**: Melihat alasan nilai naik/turun + unduh Word/PDF.\n4. **Analisis Faktor**: Menjalankan simulasi DoWhy & melihat efek kausal (ATE).")
+    st.markdown("""
+    Selamat datang di **SAAnalytics**! Berikut adalah panduan singkat penggunaan aplikasi untuk Bapak/Ibu Guru:
+
+    1. 🎒 **Portal Siswa**: Siswa mendaftar sendiri menggunakan NISN, lalu mengisi survei psikologis. (Guru juga bisa membagikan link ini ke siswa).
+    2. 📊 **Menu Nilai Raport**: Guru dapat memasukkan nilai siswa untuk setiap mata pelajaran (Matematika, IPA, dll). Sistem akan otomatis menghitung rata-ratanya.
+    3. 📄 **Laporan Siswa**: Fitur unggulan untuk melihat faktor apa saja yang membuat nilai siswa naik atau turun. Laporan ini disajikan dengan bahasa yang mudah dipahami, dan **bisa diunduh dalam bentuk Word atau PDF**.
+    4. 🧠 **Analisis Faktor**: Guru bisa melihat gambar diagram (DAG) yang menjelaskan hubungan sebab-akibat dari nilai siswa. Semakin banyak data, semakin akurat analisisnya.
+    """)
 
 elif st.session_state.current_page == "admin_users":
     st.title("Kelola Akun")
