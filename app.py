@@ -587,7 +587,7 @@ def render_kuesioner_siswa(nisn, is_preview=False):
                     horizontal=True, 
                     index=default_idx, 
                     key=f"q_{construct}_{j}",
-                    captions=["Sangat Tidak Setuju", "Tidak Setuju", "Netral", "Setuju", "Sangat Setuju"] # 🔥 KETERANGAN DI BAWAH ANGKA
+                    captions=["Sangat Tidak Setuju", "Tidak Setuju", "Netral", "Setuju", "Sangat Setuju"]
                 )
             st.markdown("")
         
@@ -758,38 +758,46 @@ elif st.session_state.current_page == "monitoring":
             with col_hapus_semua:
                 st.markdown("**Hapus Seluruh Data**")
                 st.caption("Gunakan ini untuk mengosongkan *database*.")
-                if not st.session_state.confirm_delete_all:
-                    if st.button("🗑️ Hapus Semua Siswa", type="primary", use_container_width=True): st.session_state.confirm_delete_all = True; st.rerun()
+                # 🔥 KHUSUS ADMIN: Hanya admin yang bisa menghapus semua
+                if st.session_state.user_role == "admin":
+                    if not st.session_state.confirm_delete_all:
+                        if st.button("🗑️ Hapus Semua Siswa", type="primary", use_container_width=True): st.session_state.confirm_delete_all = True; st.rerun()
+                    else:
+                        st.warning("Yakin ingin menghapus SEMUA data siswa secara permanen?")
+                        c_yes, c_no = st.columns(2)
+                        if c_yes.button("Ya, Hapus Semua", key="yes_del_all", type="primary"):
+                            for nisn in df_siswa['NISN'].unique(): hapus_survei_siswa(nisn)
+                            st.session_state.confirm_delete_all = False; st.success("Semua data siswa telah dihapus."); refresh_pengaruh(); st.rerun()
+                        if c_no.button("Batal", key="no_del_all"): st.session_state.confirm_delete_all = False; st.rerun()
                 else:
-                    st.warning("Yakin ingin menghapus SEMUA data siswa secara permanen?")
-                    c_yes, c_no = st.columns(2)
-                    if c_yes.button("Ya, Hapus Semua", key="yes_del_all", type="primary"):
-                        for nisn in df_siswa['NISN'].unique(): hapus_survei_siswa(nisn)
-                        st.session_state.confirm_delete_all = False; st.success("Semua data siswa telah dihapus."); refresh_pengaruh(); st.rerun()
-                    if c_no.button("Batal", key="no_del_all"): st.session_state.confirm_delete_all = False; st.rerun()
+                    st.info("🔒 Hanya Admin yang bisa menghapus seluruh data.")
             with col_hapus_upload:
                 st.markdown("**Hapus Berdasarkan Riwayat Upload**")
                 st.caption("Gunakan ini jika salah *upload* data Excel. (Hanya menghapus nilai, survei tetap aman).")
-                history = load_upload_history()
-                if history:
-                    history_sorted = sorted(history, key=lambda x: x['date'], reverse=True)
-                    options = {f"{h['filename']} | {h['date']} ({h['count']} data)": h for h in history_sorted}
-                    pilihan = st.selectbox("Pilih Riwayat Upload:", list(options.keys()), key="hapus_upload_select")
-                    if not st.session_state.confirm_delete_upload:
-                        if st.button(f"🗑️ Hapus Nilai Upload Ini", type="primary", use_container_width=True): st.session_state.confirm_delete_upload = pilihan; st.rerun()
-                    else:
-                        st.warning(f"Yakin menghapus nilai dari upload **{st.session_state.confirm_delete_upload}**?")
-                        c_yes, c_no = st.columns(2)
-                        if c_yes.button("Ya, Hapus", key="yes_del_upload", type="primary"):
-                            selected_batch = options.get(st.session_state.confirm_delete_upload)
-                            if selected_batch:
-                                for n in selected_batch['nisns']: hapus_nilai_saja(n)
-                                history = [h for h in history if h['id'] != selected_batch['id']]
-                                save_upload_history(history)
-                            st.session_state.confirm_delete_upload = None
-                            st.success("Nilai dari upload tersebut berhasil dihapus! (Survei tetap aman)."); refresh_pengaruh(); st.rerun()
-                        if c_no.button("Batal", key="no_del_upload"): st.session_state.confirm_delete_upload = None; st.rerun()
-                else: st.info("Belum ada riwayat upload file Excel.")
+                # 🔥 KHUSUS ADMIN: Hanya admin yang bisa menghapus riwayat
+                if st.session_state.user_role == "admin":
+                    history = load_upload_history()
+                    if history:
+                        history_sorted = sorted(history, key=lambda x: x['date'], reverse=True)
+                        options = {f"{h['filename']} | {h['date']} ({h['count']} data)": h for h in history_sorted}
+                        pilihan = st.selectbox("Pilih Riwayat Upload:", list(options.keys()), key="hapus_upload_select")
+                        if not st.session_state.confirm_delete_upload:
+                            if st.button(f"🗑️ Hapus Nilai Upload Ini", type="primary", use_container_width=True): st.session_state.confirm_delete_upload = pilihan; st.rerun()
+                        else:
+                            st.warning(f"Yakin menghapus nilai dari upload **{st.session_state.confirm_delete_upload}**?")
+                            c_yes, c_no = st.columns(2)
+                            if c_yes.button("Ya, Hapus", key="yes_del_upload", type="primary"):
+                                selected_batch = options.get(st.session_state.confirm_delete_upload)
+                                if selected_batch:
+                                    for n in selected_batch['nisns']: hapus_nilai_saja(n)
+                                    history = [h for h in history if h['id'] != selected_batch['id']]
+                                    save_upload_history(history)
+                                st.session_state.confirm_delete_upload = None
+                                st.success("Nilai dari upload tersebut berhasil dihapus! (Survei tetap aman)."); refresh_pengaruh(); st.rerun()
+                            if c_no.button("Batal", key="no_del_upload"): st.session_state.confirm_delete_upload = None; st.rerun()
+                    else: st.info("Belum ada riwayat upload file Excel.")
+                else:
+                    st.info("🔒 Hanya Admin yang bisa menghapus riwayat upload.")
             st.markdown("---")
             for idx, row in df_siswa.iterrows():
                 c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 3.5])
@@ -799,8 +807,12 @@ elif st.session_state.current_page == "monitoring":
                     b1, b2 = st.columns(2)
                     if b1.button("📝 Edit", key=f"edit_{row['NISN']}", use_container_width=True, help="Edit Data Siswa"):
                         st.session_state.edit_nisn = row['NISN']; st.session_state.edit_back_page = "monitoring"; st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
-                    if b2.button("🗑️ Hapus", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Total Siswa"):
-                        hapus_survei_siswa(row['NISN']); st.success("Siswa berhasil dihapus total!"); st.rerun()
+                    # 🔥 UBAH DISINI: Tombol Hapus Nilai Saja (Bukan Hapus Siswa)
+                    if b2.button("🗑️ Hapus Nilai", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Nilai Saja (Survei tetap aman)"):
+                        sukses, pesan = hapus_nilai_saja(row['NISN'])
+                        if sukses: st.success(pesan)
+                        else: st.error(pesan)
+                        st.rerun()
                 st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
 # ================================================================
@@ -839,7 +851,12 @@ elif st.session_state.current_page == "list_survei":
             with c5:
                 if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"): reset_password_siswa(row['NISN']); st.success("Direset!"); st.rerun()
             with c6:
-                if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", type="primary"): hapus_survei_siswa(row['NISN']); refresh_pengaruh(); st.rerun()
+                # 🔥 KHUSUS ADMIN: Tombol Hapus Survei
+                if st.session_state.user_role == "admin":
+                    if st.button("🗑️ Hapus Survei", key=f"del_survei_{row['NISN']}", type="primary"):
+                        hapus_survei_siswa(row['NISN']); st.success("Survei dihapus!"); refresh_pengaruh(); st.rerun()
+                else:
+                    st.caption("🔒 Khusus Admin")
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns([1, 2, 1])
