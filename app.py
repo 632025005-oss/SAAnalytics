@@ -512,7 +512,7 @@ for key, val in {
     "siswa_login_nisn": None, "edit_nisn": None, "preview_nisn": None,
     "edit_back_page": "monitoring",
     "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None,
-    "confirm_delete_all": False
+    "confirm_delete_all": False, "confirm_delete_kelas": None
 }.items():
     if key not in st.session_state: st.session_state[key] = val
 
@@ -722,9 +722,13 @@ elif st.session_state.current_page == "monitoring":
     with tab_daftar:
         df_siswa = pd.DataFrame(st.session_state.database_siswa)
         if not df_siswa.empty:
-            # --- FITUR HAPUS SEMUA ---
-            col_del_all1, col_del_all2 = st.columns([8, 2])
-            with col_del_all2:
+            # --- PANEL HAPUS MASSAL (HAPUS SEMUA & HAPUS PER KELAS) ---
+            st.markdown("### ⚙️ Pengaturan & Hapus Data")
+            col_hapus_semua, col_hapus_kelas = st.columns(2)
+
+            with col_hapus_semua:
+                st.markdown("**Hapus Seluruh Data**")
+                st.caption("Gunakan ini untuk mengosongkan *database*.")
                 if not st.session_state.confirm_delete_all:
                     if st.button("🗑️ Hapus Semua Siswa", type="primary", use_container_width=True):
                         st.session_state.confirm_delete_all = True
@@ -732,7 +736,7 @@ elif st.session_state.current_page == "monitoring":
                 else:
                     st.warning("Yakin ingin menghapus SEMUA data siswa secara permanen?")
                     c_yes, c_no = st.columns(2)
-                    if c_yes.button("Ya, Hapus", key="yes_del_all", type="primary"):
+                    if c_yes.button("Ya, Hapus Semua", key="yes_del_all", type="primary"):
                         for nisn in df_siswa['NISN'].unique():
                             hapus_survei_siswa(nisn)
                         st.session_state.confirm_delete_all = False
@@ -741,8 +745,37 @@ elif st.session_state.current_page == "monitoring":
                     if c_no.button("Batal", key="no_del_all"):
                         st.session_state.confirm_delete_all = False
                         st.rerun()
+
+            with col_hapus_kelas:
+                st.markdown("**Hapus Berdasarkan Kelas (Batch Upload)**")
+                st.caption("Gunakan ini jika salah *upload* data satu kelas.")
+                kelas_options = df_siswa['Kelas'].dropna().astype(str).unique().tolist()
+                if kelas_options:
+                    kelas_pilihan = st.selectbox("Pilih Kelas:", kelas_options, key="hapus_kelas_select")
+                    
+                    if not st.session_state.confirm_delete_kelas:
+                        if st.button(f"🗑️ Hapus Data Kelas {kelas_pilihan}", type="primary", use_container_width=True):
+                            st.session_state.confirm_delete_kelas = kelas_pilihan
+                            st.rerun()
+                    else:
+                        st.warning(f"Yakin menghapus semua siswa di Kelas {st.session_state.confirm_delete_kelas}?")
+                        c_yes, c_no = st.columns(2)
+                        if c_yes.button("Ya, Hapus Kelas Ini", key="yes_del_kelas", type="primary"):
+                            nisn_list = df_siswa[df_siswa['Kelas'] == st.session_state.confirm_delete_kelas]['NISN'].tolist()
+                            for n in nisn_list:
+                                hapus_survei_siswa(n)
+                            st.session_state.confirm_delete_kelas = None
+                            st.success(f"Data Kelas {kelas_pilihan} berhasil dihapus!")
+                            refresh_pengaruh(); st.rerun()
+                        if c_no.button("Batal", key="no_del_kelas"):
+                            st.session_state.confirm_delete_kelas = None
+                            st.rerun()
+                else:
+                    st.info("Belum ada data kelas.")
+
             st.markdown("---")
 
+            # --- DAFTAR SISWA ---
             for idx, row in df_siswa.iterrows():
                 c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 2.5])
                 c1.write(f"**{row.get('NISN', '-')}**")
@@ -843,7 +876,6 @@ elif st.session_state.current_page == "list_nilai":
                     st.session_state.edit_back_page = "list_nilai"
                     st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
 
-            # Expander rincian mapel dihapus sesuai permintaan
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns([1, 2, 1])
