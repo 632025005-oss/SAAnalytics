@@ -14,6 +14,20 @@ from streamlit_option_menu import option_menu
 import pytz
 import statsmodels.api as sm
 
+# --- Export laporan: Word & PDF ---
+try:
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+try:
+    from fpdf import FPDF
+    HAS_FPDF = True
+except ImportError:
+    HAS_FPDF = False
+
 from db_storage import (
     load_users, save_users, login_siswa, simpan_survei_siswa, 
     get_data_gabungan, update_nilai_siswa, tambah_siswa_baru, 
@@ -107,6 +121,19 @@ NON_LIKERT_ITEMS = {
     "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?": {"type": "number", "min": 0, "max": 10, "default": 1, "step": 1, "label": "Jumlah ekstrakurikuler"},
 }
 
+MATA_PELAJARAN = [
+    "Pendidikan Agama",
+    "PPKn",
+    "Bahasa Indonesia",
+    "Matematika",
+    "IPA",
+    "IPS",
+    "Bahasa Inggris",
+    "Seni Budaya",
+    "PJOK",
+    "Prakarya/Informatika",
+]
+
 BASELINE_ASPEK = {
     "Self_Efficacy": 4.634, "Academic_Anxiety": 3.547, "School_Support": 4.656, 
     "Parental_Involvement": 3.462, "Learning_Motivation": 4.292
@@ -186,6 +213,150 @@ def terjemah_efek(beta, pval):
         if beta < -1.5: return "Sangat Menurunkan Nilai"
         if beta < -0.5: return "Menurunkan Nilai"
         return "Sedikit Menurunkan"
+
+def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
+    nama = str(siswa.get("Nama", ""))
+    naik = [k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1]
+    turun = [k for k in kontribusi_list if k["Pengaruh (Poin)"] < -0.1]
+    naik.sort(key=lambda x: x["Pengaruh (Poin)"], reverse=True)
+    turun.sort(key=lambda x: x["Pengaruh (Poin)"])
+
+    narasi = [
+        f"Berdasarkan analisis menggunakan {dag_pilihan}, prestasi {nama} dengan nilai rata-rata "
+        f"{nilai:.2f} ({kat}) dipengaruhi oleh faktor-faktor berikut:",
+        ""
+    ]
+    if naik:
+        narasi.append("FAKTOR YANG MENINGKATKAN NILAI:")
+        for i, k in enumerate(naik, 1):
+            narasi.append(f"{i}. {k['Faktor']}: +{k['Pengaruh (Poin)']:.2f} poin")
+        narasi.append("")
+    if turun:
+        narasi.append("FAKTOR YANG MENURUNKAN NILAI:")
+        for i, k in enumerate(turun, 1):
+            narasi.append(f"{i}. {k['Faktor']}: {k['Pengaruh (Poin)']:.2f} poin")
+        narasi.append("")
+    if not naik and not turun:
+        narasi.append("Semua faktor berada di sekitar rata-rata sekolah. Tidak ada faktor yang menonjol.")
+        narasi.append("")
+
+    narasi.append("REKOMENDASI:")
+    if naik:
+        narasi.append(f"- Pertahankan faktor {naik[0]['Faktor']} sebagai kekuatan utama.")
+    if turun:
+        narasi.append(f"- Perhatikan faktor {turun[0]['Faktor']} yang perlu ditingkatkan.")
+    if len(naik) >= 2:
+        narasi.append(f"- Faktor {naik[1]['Faktor']} juga memberi kontribusi positif yang signifikan.")
+    if not naik and not turun:
+        narasi.append("- Pertahankan kondisi saat ini, atau tingkatkan faktor psikologis untuk hasil yang lebih baik.")
+
+    return "\n".join(narasi)
+
+def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
+    doc = Document()
+    title = doc.add_heading('Laporan Hasil Analisis Prestasi Siswa', level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    p = doc.add_paragraph(f"Tanggal: {datetime.now().strftime('%d %B %Y')}")
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph()
+
+    doc.add_heading('Identitas Siswa', level=1)
+    doc.add_paragraph(f"Nama: {siswa.get('Nama', '-')}")
+    doc.add_paragraph(f"NISN: {siswa.get('NISN', '-')}")
+    doc.add_paragraph(f"Kelas: {siswa.get('Kelas', '-')}")
+    doc.add_paragraph()
+
+    doc.add_heading('Nilai Akademik', level=1)
+    doc.add_paragraph(f"Nilai Rata-rata: {nilai:.2f}")
+    doc.add_paragraph(f"Kategori: {kat}")
+    doc.add_paragraph()
+
+    doc.add_heading('Model Analisis', level=1)
+    doc.add_paragraph(dag_pilihan)
+    doc.add_paragraph()
+
+    doc.add_heading('Kontribusi Faktor', level=1)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = 'Light Grid Accent 1'
+    hdr = table.rows[0].cells
+    hdr[0].text = "Faktor"
+    hdr[1].text = "Pengaruh (Poin)"
+    for k in kontribusi_list:
+        row = table.add_row().cells
+        row[0].text = k["Faktor"]
+        row[1].text = f"{k['Pengaruh (Poin)']:+.2f}"
+    doc.add_paragraph()
+
+    doc.add_heading('Kesimpulan & Rekomendasi', level=1)
+    narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
+    for line in narasi.split("\n"):
+        doc.add_paragraph(line)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
+    def clean(t):
+        return str(t).replace("—", "-").replace("–", "-").replace("→", "->").replace("•", "-")
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.set_font('Helvetica', 'B', 16)
+    pdf.cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', ln=True, align='C')
+    pdf.set_font('Helvetica', 'I', 10)
+    pdf.cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, 'Identitas Siswa', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"), ln=True)
+    pdf.cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"), ln=True)
+    pdf.cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"), ln=True)
+    pdf.ln(3)
+
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, 'Nilai Akademik', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}", ln=True)
+    pdf.cell(0, 6, clean(f"Kategori: {kat}"), ln=True)
+    pdf.ln(3)
+
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, 'Model Analisis', ln=True)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.multi_cell(0, 6, clean(dag_pilihan))
+    pdf.ln(3)
+
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, 'Kontribusi Faktor', ln=True)
+    pdf.set_font('Helvetica', 'B', 10)
+    pdf.cell(90, 7, "Faktor", border=1)
+    pdf.cell(0, 7, "Pengaruh (Poin)", border=1, ln=True)
+    pdf.set_font('Helvetica', '', 10)
+    for k in kontribusi_list:
+        pdf.cell(90, 6, clean(k["Faktor"]), border=1)
+        pdf.cell(0, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
+    pdf.ln(5)
+
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, 'Kesimpulan & Rekomendasi', ln=True)
+    pdf.set_font('Helvetica', '', 10)
+    narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
+    for line in narasi.split("\n"):
+        pdf.multi_cell(0, 6, clean(line))
+
+    try:
+        out = pdf.output()
+    except Exception:
+        out = pdf.output(dest='S')
+    if isinstance(out, str):
+        out = out.encode('latin-1')
+    return io.BytesIO(bytes(out))
 
 # ================================================================
 # PAGE CONFIG & CSS
@@ -482,7 +653,6 @@ elif st.session_state.current_page == "list_survei":
                 if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", type="primary"): hapus_survei_siswa(row['NISN']); refresh_pengaruh(); st.rerun()
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
-        # --- PAGINATION NAVIGATION ---
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
             if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_survei == 1), use_container_width=True): st.session_state.page_survei -= 1; st.rerun()
@@ -499,46 +669,72 @@ elif st.session_state.current_page == "list_survei":
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): st.session_state.page_survei += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: DAFTAR NILAI (PAGINATION)
+# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL)
 # ================================================================
 elif st.session_state.current_page == "list_nilai":
     st.title("Data Nilai Raport Siswa")
     df_siswa = pd.DataFrame(st.session_state.database_siswa)
     if not df_siswa.empty:
-        cari = st.text_input("🔍 Cari nama atau NISN:")
-        if cari: df_siswa = df_siswa[df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)]
-        
-        items_per_page = 10; total_pages = math.ceil(len(df_siswa) / items_per_page)
+        cari = st.text_input("🔍 Cari nama atau NISN:", key="cari_nilai")
+        if cari:
+            df_siswa = df_siswa[df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False)
+                                | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)]
+
+        items_per_page = 10
+        total_pages = max(1, math.ceil(len(df_siswa) / items_per_page))
         if st.session_state.page_nilai > total_pages: st.session_state.page_nilai = total_pages
         if st.session_state.page_nilai < 1: st.session_state.page_nilai = 1
-            
-        df_page = df_siswa.iloc[(st.session_state.page_nilai - 1) * items_per_page : (st.session_state.page_nilai) * items_per_page]
+
+        df_page = df_siswa.iloc[(st.session_state.page_nilai - 1) * items_per_page : st.session_state.page_nilai * items_per_page]
 
         for idx, row in df_page.iterrows():
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
-            c1.write(f"**{row['NISN']}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Nilai: **{safe_float(row.get('Nilai Akademik', 0)):.2f}**"); c4.write(f"Status: {'Lengkap' if safe_float(row.get('Nilai Akademik',0))>0 else 'Kosong'}")
+            c1.write(f"**{row['NISN']}**")
+            c2.write(f"**{row['Nama']}**")
+            nilai_rata = safe_float(row.get('Nilai Akademik', 0))
+            c3.write(f"Rata-rata: **{nilai_rata:.2f}**")
+            c4.write(f"Status: {'Lengkap' if nilai_rata > 0 else 'Kosong'}")
             with c5:
-                if st.button("Ubah", key=f"edit_nilai_{row['NISN']}"): st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_y"; st.rerun()
+                if st.button("Ubah", key=f"edit_nilai_{row['NISN']}"):
+                    st.session_state.edit_nisn = row['NISN']
+                    st.session_state.current_page = "edit_y"; st.rerun()
+
+            ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in MATA_PELAJARAN)
+            if ada_mapel:
+                with st.expander("📋 Lihat rincian per mata pelajaran"):
+                    cols = st.columns(2)
+                    for i, m in enumerate(MATA_PELAJARAN):
+                        col = cols[i % 2]
+                        col_name = f"Nilai_{m}"
+                        if col_name in row.index and pd.notna(row[col_name]):
+                            col.markdown(f"**{m}**: {safe_float(row[col_name]):.2f}")
+            else:
+                st.caption("_Belum ada rincian per mapel. Klik 'Ubah' untuk mengisi._")
+
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
-        # --- PAGINATION NAVIGATION ---
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
-            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_nilai == 1), use_container_width=True, key="prev_nilai"): st.session_state.page_nilai -= 1; st.rerun()
+            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_nilai == 1), use_container_width=True, key="prev_nilai"):
+                st.session_state.page_nilai -= 1; st.rerun()
         with p2:
             c_l, c_m, c_r = st.columns([1, 1.5, 1])
             with c_m:
                 col_t1, col_sel, col_t2 = st.columns([1, 1, 1])
                 with col_t1: st.markdown("<div style='text-align:right; padding-top:12px;'>Halaman</div>", unsafe_allow_html=True)
                 with col_sel:
-                    sel_page = st.selectbox("Lompat", options=list(range(1, total_pages + 1)), index=st.session_state.page_nilai - 1, label_visibility="collapsed", key="sel_nilai")
-                    if sel_page != st.session_state.page_nilai: st.session_state.page_nilai = sel_page; st.rerun()
+                    sel_page = st.selectbox("Lompat", options=list(range(1, total_pages + 1)),
+                                            index=st.session_state.page_nilai - 1,
+                                            label_visibility="collapsed", key="sel_nilai")
+                    if sel_page != st.session_state.page_nilai:
+                        st.session_state.page_nilai = sel_page; st.rerun()
                 with col_t2: st.markdown(f"<div style='text-align:left; padding-top:12px;'>dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
         with p3:
-            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_nilai == total_pages), use_container_width=True, key="next_nilai"): st.session_state.page_nilai += 1; st.rerun()
+            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_nilai == total_pages), use_container_width=True, key="next_nilai"):
+                st.session_state.page_nilai += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: EDIT SURVEI & NILAI
+# HALAMAN: EDIT SURVEI
 # ================================================================
 elif st.session_state.current_page == "edit_x":
     df = pd.DataFrame(st.session_state.database_siswa)
@@ -550,6 +746,9 @@ elif st.session_state.current_page == "edit_x":
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
         render_kuesioner_siswa(siswa['NISN'], is_preview=True)
 
+# ================================================================
+# HALAMAN: EDIT NILAI (PER MATA PELAJARAN)
+# ================================================================
 elif st.session_state.current_page == "edit_y":
     df = pd.DataFrame(st.session_state.database_siswa)
     if st.session_state.get("edit_nisn") is None or df.empty:
@@ -558,49 +757,141 @@ elif st.session_state.current_page == "edit_y":
     else:
         if st.button("⬅️ Kembali ke Daftar Nilai", key="back_edit_y"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
+
+        nilai_lama_per_mapel = {}
+        for m in MATA_PELAJARAN:
+            col = f"Nilai_{m}"
+            if col in siswa.index and pd.notna(siswa[col]):
+                nilai_lama_per_mapel[m] = safe_float(siswa[col], 0)
+
         nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
-        
-        with st.form("form_nilai_rata"):
-            nilai_tunggal = st.number_input("Masukkan Nilai Raport", min_value=0.0, max_value=100.0, value=nilai_skrg if nilai_skrg > 0 else 80.0, step=0.1)
-            if st.form_submit_button("Simpan data Y", type="primary"):
-                sukses, pesan = update_nilai_siswa(siswa['NISN'], {"Nilai": nilai_tunggal})
-                if sukses: st.success(pesan); refresh_pengaruh(); st.session_state.current_page = "list_nilai"; st.rerun()
+        default_val = nilai_skrg if nilai_skrg > 0 else 80.0
+
+        st.markdown(f"### Input Nilai per Mata Pelajaran — {siswa['Nama']}")
+
+        with st.form("form_nilai_per_mapel"):
+            c1, c2 = st.columns(2)
+            nilai_per_mapel = {}
+            for i, m in enumerate(MATA_PELAJARAN):
+                col = c1 if i % 2 == 0 else c2
+                default_m = nilai_lama_per_mapel.get(m, default_val)
+                nilai_per_mapel[m] = col.number_input(
+                    m, min_value=0.0, max_value=100.0, value=default_m, step=0.1, key=f"nilai_m_{m}"
+                )
+
+            rata = sum(nilai_per_mapel.values()) / len(nilai_per_mapel)
+            kat, warna = kategori_nilai(rata)
+            st.markdown(f"""<div style="background:#f0fdfa; border-left:4px solid {warna}; padding:1rem; border-radius:6px; margin-top:1rem;">
+                <b>Rata-rata Nilai:</b> <span style="font-size:1.5rem; font-weight:700; color:{warna};">{rata:.2f}</span>
+                &nbsp;—&nbsp; Kategori: <b>{kat}</b>
+            </div>""", unsafe_allow_html=True)
+
+            if st.form_submit_button("Simpan Nilai", type="primary"):
+                payload = {"Nilai": rata}
+                for m, v in nilai_per_mapel.items():
+                    payload[f"Nilai_{m}"] = v
+                sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
+                if sukses:
+                    st.success("Nilai berhasil disimpan!"); refresh_pengaruh()
+                    st.session_state.current_page = "list_nilai"; st.rerun()
+                else:
+                    st.error(f"Gagal: {pesan}")
 
 # ================================================================
-# HALAMAN: LAPORAN SISWA (DINAMIS BERDASARKAN DAG)
+# HALAMAN: LAPORAN SISWA (DENGAN EXPORT WORD & PDF)
 # ================================================================
 elif st.session_state.current_page == "rangkuman":
     st.title("Laporan Hasil Analisis Siswa")
     refresh_pengaruh(); df = pd.DataFrame(st.session_state.database_siswa)
-    
+
     if not df.empty:
         dag_pilihan = st.selectbox("Pilih Model Analisis Faktor (DAG) untuk Laporan:", list(DAG_MODELS.keys()))
-        
+
         df["Label"] = df["Nama"].astype(str) + " (" + df["Kelas"].astype(str).fillna("") + ")"
         siswa_terpilih = st.selectbox("Pilih Siswa:", df["Label"].tolist())
-        
+
         if siswa_terpilih:
             siswa = df[df["Label"] == siswa_terpilih].iloc[0]
             nilai = safe_float(siswa.get("Nilai Akademik", 0)); kat, warna = kategori_nilai(nilai)
-            
+
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
-            
+
+            ada_mapel = any(f"Nilai_{m}" in siswa.index and pd.notna(siswa[f"Nilai_{m}"]) for m in MATA_PELAJARAN)
+            if ada_mapel:
+                with st.expander("📋 Rincian Nilai per Mata Pelajaran", expanded=False):
+                    mapel_data = []
+                    for m in MATA_PELAJARAN:
+                        col = f"Nilai_{m}"
+                        if col in siswa.index and pd.notna(siswa[col]):
+                            mapel_data.append({"Mata Pelajaran": m, "Nilai": safe_float(siswa[col])})
+                    if mapel_data:
+                        st.dataframe(pd.DataFrame(mapel_data), use_container_width=True, hide_index=True)
+
             ates = DAG_MODELS[dag_pilihan]["ate"]
             nama_awam = {"Self_Efficacy": "Percaya Diri", "Academic_Anxiety": "Rasa Cemas", "School_Support": "Dukungan Sekolah", "Parental_Involvement": "Dukungan Orang Tua", "Learning_Motivation": "Semangat Belajar"}
-            
+
             kontribusi = []
             for f, nama in nama_awam.items():
                 ate = ates.get(f, 0.0)
                 val = safe_float(siswa.get(f, 3.0)); base = BASELINE_ASPEK.get(f, 3.0)
                 kontribusi.append({"Faktor": nama, "Pengaruh (Poin)": ate * (val - base)})
-                
+
             df_kontrib = pd.DataFrame(kontribusi).sort_values("Pengaruh (Poin)")
-            fig = px.bar(df_kontrib, x="Pengaruh (Poin)", y="Faktor", orientation="h", color="Pengaruh (Poin)", color_continuous_scale="RdBu", text=[f"{v:+.2f}" for v in df_kontrib["Pengaruh (Poin)"]])
-            fig.update_traces(textposition="outside"); fig.update_layout(height=300, coloraxis_showscale=False)
+            fig = px.bar(df_kontrib, x="Pengaruh (Poin)", y="Faktor", orientation="h",
+                         color="Pengaruh (Poin)", color_continuous_scale="RdBu",
+                         text=[f"{v:+.2f}" for v in df_kontrib["Pengaruh (Poin)"]])
+            fig.update_traces(textposition="outside")
+            fig.update_layout(height=300, coloraxis_showscale=False)
             st.plotly_chart(fig, use_container_width=True)
 
+            st.markdown("### Kesimpulan & Rekomendasi")
+            narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi)
+            st.markdown(
+                f"""<div style="background:#f8fafc; padding:1.5rem; border-radius:8px; border-left:4px solid #0d9488; white-space: pre-wrap; line-height:1.8;">{narasi}</div>""",
+                unsafe_allow_html=True
+            )
+
+            st.markdown("---")
+            st.markdown("### 📥 Unduh Laporan")
+            st.caption("Unduh laporan dalam format Word (.docx) atau PDF untuk dokumentasi.")
+
+            col_w, col_p = st.columns(2)
+            with col_w:
+                if HAS_DOCX:
+                    try:
+                        buf_w = generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi)
+                        st.download_button(
+                            "📄 Unduh Word (.docx)",
+                            data=buf_w,
+                            file_name=f"Laporan_{siswa.get('NISN', 'siswa')}_{datetime.now().strftime('%Y%m%d')}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True,
+                            key="dl_word_rangkuman"
+                        )
+                    except Exception as e:
+                        st.error(f"Gagal generate Word: {e}")
+                else:
+                    st.warning("`python-docx` belum ter-install. Tambahkan ke requirements.txt.")
+
+            with col_p:
+                if HAS_FPDF:
+                    try:
+                        buf_p = generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi)
+                        st.download_button(
+                            "📄 Unduh PDF",
+                            data=buf_p,
+                            file_name=f"Laporan_{siswa.get('NISN', 'siswa')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="dl_pdf_rangkuman"
+                        )
+                    except Exception as e:
+                        st.error(f"Gagal generate PDF: {e}")
+                else:
+                    st.warning("`fpdf2` belum ter-install. Tambahkan ke requirements.txt.")
+
 # ================================================================
-# HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG & INTERPRETASI AWAM)
+# HALAMAN: ANALISIS FAKTOR (VISUALISASI DAG)
 # ================================================================
 elif st.session_state.current_page == "kausal":
     st.title("Analisis Faktor Nilai Siswa")
@@ -608,7 +899,6 @@ elif st.session_state.current_page == "kausal":
     
     tab_daftar, tab_create, tab_banding = st.tabs(["📂 Daftar DAG", "➕ Create DAG", "📊 Perbandingan Lintas DAG"])
     
-    # TAB 1: DAFTAR DAG
     with tab_daftar:
         st.markdown("""
         <div style="background-color: #e0f2f1; border-left: 5px solid #0d9488; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #004d40; font-size: 0.9rem;">
@@ -642,14 +932,10 @@ elif st.session_state.current_page == "kausal":
                     st.session_state.selected_dag = k
                     st.rerun()
 
-        # Tampilkan Custom DAG
         if st.session_state.custom_dags:
             st.markdown("### DAG Buatan Guru (Kustom)")
             c3, c4 = st.columns(2)
-            
-            # Menggunakan list() agar aman saat ada penghapusan data di dalam loop
             custom_dag_keys = list(st.session_state.custom_dags.keys())
-            
             for i, k in enumerate(custom_dag_keys):
                 v = st.session_state.custom_dags[k]
                 target_col = c3 if i % 2 == 0 else c4
@@ -663,8 +949,6 @@ elif st.session_state.current_page == "kausal":
                         <span class="dag-link">{len(v['edges'])} sisi</span>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    # Tombol Aksi (Lihat & Hapus)
                     b1, b2 = st.columns([4, 1])
                     with b1:
                         if st.button(f"lihat diagram & interpretasi →", key=f"lihat_custom_{k}", use_container_width=True):
@@ -677,12 +961,10 @@ elif st.session_state.current_page == "kausal":
                                 st.session_state.selected_dag = None
                             st.rerun()
 
-        # --- BAGIAN VISUALISASI (Muncul setelah DAG dipilih) ---
         if st.session_state.get("selected_dag"):
             st.markdown("---")
             selected = st.session_state.selected_dag
             
-            # Definisi konfigurasi Graphviz, Beta, dan Interpretasi per model (Bahasa Awam)
             if selected == "Model 1: Baseline Direct Effects":
                 dot = """digraph G { rankdir=LR; splines=true; nodesep=0.5; ranksep=1.5; node [shape=box, style="rounded,filled", fontname="Helvetica", fontcolor=white, width=2]; edge [fontname="Helvetica", fontsize=10];
                     PI [label="Parental\\nInvolvement", fillcolor="#0f766e"]; SS [label="School Support", fillcolor="#0f766e"]; SE [label="Self Efficacy", fillcolor="#0f766e"]; LM [label="Learning\\nMotivation", fillcolor="#0f766e"]; AA [label="Academic\\nAnxiety", fillcolor="#0f766e"]; Y [label="Prestasi Siswa", fillcolor="#eab308", fontcolor="black", width=2.5];
@@ -736,7 +1018,6 @@ elif st.session_state.current_page == "kausal":
                 *   **Semangat Belajar ke Rasa Cemas (+0.45)**: Anak yang semangatnya tinggi justru sedikit cemas saat ujian. Ini cemas yang sehat (takut dapat nilai jelek makanya belajar mati-matian).
                 """
             
-            # Visualisasi Custom DAG (Dihitung Dinamis)
             elif selected in st.session_state.custom_dags:
                 info = st.session_state.custom_dags[selected]
                 st.markdown(f"### Visualisasi: {selected}")
@@ -786,7 +1067,6 @@ elif st.session_state.current_page == "kausal":
                     st.markdown(f"### Penjelasan & Interpretasi Hasil")
                     st.info("DAG ini merupakan model buatan Anda sendiri. Silakan gunakan tab 'Perbandingan Lintas DAG' untuk melihat perbandingan jumlah sisi antar model.")
 
-    # TAB 2: CREATE DAG
     with tab_create:
         st.info("Kelompokkan fitur X menjadi beberapa bagian (misal A, B, C, D atau nama konstruk). 2) Pilih Grog untuk membuat DAG, atau tulis sintaks sendiri. Jawaban harus lolos validasi.")
         
@@ -806,7 +1086,6 @@ elif st.session_state.current_page == "kausal":
         df_mapping = pd.DataFrame(RAW_QUESTIONS)
         df_mapping["Masuk bagian"] = df_mapping["default"]
         
-        # Data Editor Dinamis (Menampilkan X11 - X37)
         edited_df = st.data_editor(
             df_mapping[["kode", "fitur", "Masuk bagian"]],
             column_config={
@@ -835,8 +1114,6 @@ elif st.session_state.current_page == "kausal":
                     "mapping": edited_df.to_dict('records')
                 }
                 st.session_state.selected_dag = nama_dag
-                
-                # TAMPILKAN LANGSUNG HASILNYA DI SINI
                 st.success(f"DAG '{nama_dag}' berhasil dibuat dan dianalisis!")
                 
                 df_siswa = pd.DataFrame(st.session_state.database_siswa)
@@ -871,7 +1148,6 @@ elif st.session_state.current_page == "kausal":
                 else:
                     st.info("Belum ada pengaruh yang terbukti secara nyata dari model ini pada data yang ada saat ini.")
 
-    # TAB 3: PERBANDINGAN LINTAS DAG (Bahasa Awam)
     with tab_banding:
         st.markdown("### Perbandingan Semua Model DAG")
         st.write("Tabel ini membandingkan seberapa besar pengaruh tiap faktor terhadap nilai siswa di berbagai model.")
@@ -879,17 +1155,16 @@ elif st.session_state.current_page == "kausal":
         all_dags = {**DAG_MODELS, **st.session_state.custom_dags}
         konstruk_list = ["Parental_Involvement", "School_Support", "Self_Efficacy", "Learning_Motivation", "Academic_Anxiety"]
         
-        # Siapkan data untuk dataframe
         data_tabel = []
         for k in konstruk_list:
             row = {"Faktor": k}
             for dag_name, dag_info in all_dags.items():
                 col_name = dag_name.split(":")[0] if ":" in dag_name else dag_name
                 
-                if "ate" in dag_info: # Model bawaan
+                if "ate" in dag_info:
                     val = dag_info["ate"].get(k, 0.0)
                     pval = 0.01 if abs(val) > 0.5 else 0.5
-                else: # Model kustom
+                else:
                     df_siswa = pd.DataFrame(st.session_state.database_siswa)
                     hasil_ols = hitung_ols_custom(df_siswa, dag_info["edges"])
                     if k in [e[0] for e in dag_info["edges"]]:
@@ -903,7 +1178,6 @@ elif st.session_state.current_page == "kausal":
         
         df_compare = pd.DataFrame(data_tabel).set_index("Faktor")
         
-        # Terjemahkan nama baris
         nama_awam = {
             "Parental_Involvement": "Dukungan Orang Tua", 
             "School_Support": "Dukungan Sekolah", 
@@ -913,7 +1187,6 @@ elif st.session_state.current_page == "kausal":
         }
         df_compare = df_compare.rename(index=nama_awam)
         
-        # Tambahkan baris ringkasan (Akurasi, dll) dengan bahasa awam
         akurasi_row = {"Faktor": "Seberapa Akurat Model Memprediksi Nilai"}
         stabil_row = {"Faktor": "Tingkat Keyakinan Model"}
         jalur_row = {"Faktor": "Jumlah Jalan Tidak Langsung"}
@@ -928,7 +1201,6 @@ elif st.session_state.current_page == "kausal":
         df_compare.loc["Tingkat Keyakinan Model"] = [stabil_row.get(c, "Cukup Yakin") for c in df_compare.columns]
         df_compare.loc["Jumlah Jalan Tidak Langsung"] = [jalur_row.get(c, "Ada Beberapa") for c in df_compare.columns]
         
-        # Tampilkan dataframe dengan styling warna
         st.dataframe(
             df_compare.style.map(
                 lambda v: 'background-color: #d1fae5; color: #065f46; font-weight: bold;' if isinstance(v, str) and ('Menaikkan' in v or 'Sedikit Menaikkan' in v) else 
@@ -981,7 +1253,7 @@ elif st.session_state.current_page == "akun":
 
 elif st.session_state.current_page == "tentang":
     st.title("Panduan Penggunaan Aplikasi")
-    st.markdown("1. **Portal Siswa**: Siswa mendaftar mandiri dan mengisi survei.\n2. **Menu Nilai Raport**: Guru menginput nilai.\n3. **Laporan Siswa**: Melihat alasan nilai naik/turun berdasarkan model kausal terpilih.\n4. **Analisis Faktor**: Menjalankan simulasi DoWhy & melihat efek kausal (ATE).")
+    st.markdown("1. **Portal Siswa**: Siswa mendaftar mandiri dan mengisi survei.\n2. **Menu Nilai Raport**: Guru menginput nilai per mata pelajaran.\n3. **Laporan Siswa**: Melihat alasan nilai naik/turun + unduh Word/PDF.\n4. **Analisis Faktor**: Menjalankan simulasi DoWhy & melihat efek kausal (ATE).")
 
 elif st.session_state.current_page == "admin_users":
     st.title("Kelola Akun")
