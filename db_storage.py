@@ -28,7 +28,7 @@ def clean_nisn(nisn):
     return str(nisn).replace('.0', '').strip()
 
 # ================================================================
-# MANAJEMEN PENGGUNA
+# MANAJEMEN PENGGUNA (GURU/ADMIN)
 # ================================================================
 def load_users():
     users = {}
@@ -66,6 +66,7 @@ def login_siswa(nisn, password_plain):
     
     akun = db["siswa_akun"].find_one({"NISN": nisn_clean})
     if not akun:
+        # AUTO-REGISTER
         if str(password_plain).strip() != nisn_clean:
             return False, "NISN belum terdaftar. Untuk mendaftar mandiri, pastikan Password sama dengan NISN Anda."
             
@@ -108,35 +109,29 @@ def reset_password_siswa(nisn):
         return False, f"Gagal reset: {e}"
 
 def hapus_survei_siswa(nisn):
+    """Menghapus TOTAL semua jejak siswa (Akun, Survei, dan Nilai)"""
     db = _db()
     nisn_clean = clean_nisn(nisn)
     try:
         db["siswa_akun"].delete_one({"NISN": nisn_clean})
         db["siswa_survei"].delete_one({"NISN": nisn_clean})
-        db["siswa_master"].delete_one({"NISN": nisn_clean}) # TAMBAHAN: Hapus juga master nilainya agar total
-        return True, "Data survei dan akun siswa berhasil dihapus. NISN dapat digunakan kembali."
+        db["siswa_master"].delete_one({"NISN": nisn_clean}) 
+        return True, "Data survei, akun, dan nilai siswa berhasil dihapus total. NISN dapat digunakan kembali."
     except Exception as e:
         return False, f"Gagal menghapus: {e}"
 
-# ================================================================
-# FUNGSI BARU: HAPUS NILAI SAJA (SURVEI TETAP AMAN)
-# ================================================================
 def hapus_nilai_saja(nisn):
-    """
-    Menghapus HANYA data nilai siswa (dari siswa_master).
-    Data survei (siswa_survei) dan akun (siswa_akun) TETAP AMAN.
-    """
+    """Menghapus HANYA data nilai (dari siswa_master). Survei tetap aman."""
     db = _db()
     nisn_clean = clean_nisn(nisn)
     try:
-        # Menghapus dokumen nilai di siswa_master
         db["siswa_master"].delete_one({"NISN": nisn_clean})
         return True, f"✅ Nilai NISN {nisn_clean} berhasil dihapus. (Survei tetap aman)."
     except Exception as e:
         return False, f"Gagal menghapus nilai: {e}"
 
 # ================================================================
-# DATA GABUNGAN (DENGAN FITUR SORTING NISN)
+# DATA GABUNGAN (UNTUK DASHBOARD)
 # ================================================================
 def get_data_gabungan():
     db = _db()
@@ -163,7 +158,6 @@ def get_data_gabungan():
         
     # Urutkan berdasarkan NISN terbesar ke terkecil
     data_gabungan.sort(key=lambda x: str(x.get("NISN", "")), reverse=True)
-        
     return data_gabungan
 
 # ================================================================
@@ -172,21 +166,65 @@ def get_data_gabungan():
 def import_data_historis_lengkap(df_excel):
     db = _db()
     count_master = 0
-    kolom_master = ["NISN", "Nama", "Kelas", "Nilai"] + [c for c in df_excel.columns if '_S1' in c or '_S2' in c]
     
+    # Kolom psikologis
+    kolom_survei = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
+    # Kolom nilai
+    kolom_master = ["NISN", "Nama", "Kelas", "Nilai"] + [c for c in df_excel.columns if '_S1' in c or '_S2' in c]
+    # Kolom demografi
+    kolom_demografi = [
+        "Usia", "Pendidikan Terakhir Ayah", "Pendidikan Terakhir Ibu", 
+        "Perkiraan Pendapatan Orang Tua per bulan", "Jarak rumah ke sekolah",
+        "Fasilitas yang tersedia di rumah (centang semua yang sesuai):",
+        "Rata-rata berapa jam per hari kamu menggunakan gadget/HP di luar keperluan belajar (bermain game, media sosial, menonton video)?",
+        "Rata-rata berapa jam kamu BELAJAR DI RUMAH setiap hari (di luar jam sekolah)?",
+        "Berapa jam per MINGGU kamu mengikuti LES / BIMBINGAN BELAJAR di luar sekolah  ?",
+        "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?"
+    ]
+
     for index, row in df_excel.iterrows():
         nisn = clean_nisn(row["NISN"])
         if not nisn: continue
         
+        # 1. SIMPAN NILAI (MASTER)
         data_master = {"NISN": nisn}
         for k in kolom_master:
             if k != "NISN" and k in df_excel.columns: 
                 data_master[k] = row[k]
+        
+        # Hitung rata-rata otomatis jika kolom "Nilai" tidak ada
+        if "Nilai" not in data_master:
+            nilai_mapel = [row[c] for c in kolom_master if c not in ["NISN", "Nama", "Kelas", "Nilai"] and pd.notna(row[c])]
+            if nilai_mapel:
+                data_master["Nilai"] = sum(nilai_mapel) / len(nilai_mapel)
+                
         db["siswa_master"].update_one({"NISN": nisn}, {"$set": data_master}, upsert=True)
         count_master += 1
         
+        # 2. SIMPAN SURVEI & DEMOGRAFI
+        data_survei = {"NISN": nisn}
+        for k in kolom_survei:
+            if k in df_excel.columns and pd.notna(row[k]):
+                data_survei[k] = float(row[k])
+                
+        for k in kolom_demografi:
+            if k in df_excel.columns and pd.notna(row[k]):
+                data_survei[k] = row[k]
+                
+        if "Nama" in df_excel.columns: data_survei["Nama"] = row["Nama"]
+        if "Kelas" in df_excel.columns: data_survei["Kelas"] = row["Kelas"]
+
+        db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_survei}, upsert=True)
+        
+        # 3. BUAT AKUN & TANDAI SUDAH ISI
         if not db["siswa_akun"].find_one({"NISN": nisn}):
-            db["siswa_akun"].insert_one({"NISN": nisn, "Password_Hash": hash_password(nisn), "sudah_isi_survei": False})
+            db["siswa_akun"].insert_one({
+                "NISN": nisn, 
+                "Password_Hash": hash_password(nisn), 
+                "sudah_isi_survei": True
+            })
+        else:
+            db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}})
             
     return count_master
 
