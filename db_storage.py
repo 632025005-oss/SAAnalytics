@@ -5,9 +5,9 @@ from datetime import datetime
 import pytz
 import hashlib
 import pandas as pd
-from pymongo import MongoClient
 import re
 from difflib import SequenceMatcher
+from pymongo import MongoClient
 
 # ================================================================
 # KONEKSI MONGODB
@@ -162,19 +162,23 @@ def get_data_gabungan():
     return data_gabungan
 
 # ================================================================
-# IMPORT EXCEL PINTAR
+# IMPORT EXCEL PINTAR (ANTI GAGAL, ANTI TYPO)
 # ================================================================
 def import_data_historis_lengkap(df_excel):
     db = _db()
     count = 0
     
+    # 1. Bersihkan nama kolom
     df_excel.columns = df_excel.columns.astype(str).str.strip()
     cols_lower = {c.lower(): c for c in df_excel.columns}
 
+    # 2. Deteksi Tipe File
     is_file_nilai = any(k in cols_lower for k in ["pend. agama", "matematika", "b. indo", "b.indonesia", "ipa"])
     is_file_survei_mentah = "saya merasa puas ketika berhasil memahami materi yang sulit" in cols_lower
 
-    # PROSES FILE NILAI
+    # =========================================================
+    # PROSES FILE NILAI (Excel Nilai Kelas)
+    # =========================================================
     if is_file_nilai:
         kolom_nisn = cols_lower.get("nisn") or cols_lower.get("nis")
         if not kolom_nisn: return 0
@@ -203,18 +207,25 @@ def import_data_historis_lengkap(df_excel):
             count += 1
         return count
 
-    # PROSES FILE KUISIONER MENTAH (FUZZY MATCH)
+    # =========================================================
+    # PROSES FILE KUISIONER MENTAH (FUZZY MATCHING - ANTI TYPO)
+    # =========================================================
     elif is_file_survei_mentah:
-        def clean_name(n):
+        def get_words(n):
             n = str(n).lower()
             n = re.sub(r'[^a-z0-9\s]', '', n)
-            return " ".join(n.split())
+            # Hanya ambil kata > 2 huruf (biar "b.a", "d.", "N" tidak mengganggu)
+            return [w for w in n.split() if len(w) > 2]
         
         semua_master = list(db["siswa_master"].find({}, {"NISN": 1, "Nama": 1}))
         db_names = []
         for m in semua_master:
             if m.get("Nama"):
-                db_names.append({"NISN": m.get("NISN"), "Nama_Clean": clean_name(m.get("Nama"))})
+                db_names.append({
+                    "NISN": m.get("NISN"), 
+                    "Nama_Clean": str(m.get("Nama")).lower(),
+                    "Kata": get_words(m.get("Nama"))
+                })
 
         def get_val(keyword):
             for k_low, k_asli in cols_lower.items():
@@ -224,53 +235,74 @@ def import_data_historis_lengkap(df_excel):
         for _, row in df_excel.iterrows():
             nama_siswa_raw = str(row.get(cols_lower.get("nama", ""), "")).strip()
             if not nama_siswa_raw: continue
-            nama_siswa_clean = clean_name(nama_siswa_raw)
             
+            kata_kuesioner = get_words(nama_siswa_raw)
             best_match_nisn = None
-            highest_ratio = 0.0
+            highest_score = 0.0
             
+            # --- LOGIKA PENCOCOKAN NAMA ---
             for db_siswa in db_names:
-                db_name = db_siswa["Nama_Clean"]
-                ratio = SequenceMatcher(None, nama_siswa_clean, db_name).ratio()
-                if any(word in db_name.split() for word in nama_siswa_clean.split() if len(word) > 3):
-                    ratio += 0.2
-                if ratio > highest_ratio:
-                    highest_ratio = ratio
+                kata_db = db_siswa["Kata"]
+                
+                # 1. Hitung berapa banyak kata yang SAMA PERSIS (misal "septa" ada di keduanya)
+                irisan_kata = set(kata_kuesioner) & set(kata_db)
+                skor_kata = len(irisan_kata)
+                
+                # 2. Hitung kemiripan huruf secara keseluruhan (jika kata tidak ada yang sama)
+                skor_huruf = SequenceMatcher(None, nama_siswa_raw.lower(), db_siswa["Nama_Clean"]).ratio()
+                
+                # Total skor: Prioritaskan yang punya kata sama banyak
+                skor_akhir = (skor_kata * 0.8) + skor_huruf
+
+                if skor_akhir > highest_score:
+                    highest_score = skor_akhir
                     best_match_nisn = db_siswa["NISN"]
 
-            nisn = best_match_nisn if highest_ratio >= 0.6 else None
-            if not nisn: continue
+            # Jika punya minimal 1 kata yang sama (skor >= 0.8), ATAU kemiripan huruf di atas 70%
+            nisn = best_match_nisn if highest_score >= 0.8 else None
+
+            if not nisn: 
+                continue # Lewati jika benar-benar tidak ada yang mirip
 
             data_s = {"NISN": nisn, "Nama": nama_siswa_raw}
             if "kelas" in cols_lower: data_s["Kelas"] = row[cols_lower["kelas"]]
             
+            # --- RUMUS KONSTRUK PSIKOLOGIS (Skala 1-5) ---
+            # 1. Self Efficacy (6 butir)
             se_cols = ["saya merasa puas ketika berhasil", "saya merasa nyaman dengan teman", "saya yakin bisa memahami materi", "saya yakin bisa mengerjakan tugas", "saya yakin bisa menguasai keterampilan", "saya yakin bisa mendapat nilai bagus"]
             data_s["Self_Efficacy"] = sum([get_val(c) for c in se_cols]) / 6.0
 
+            # 2. Learning Motivation (5 butir, 1 reverse)
             lm_cols = ["saya senang belajar hal-hal baru", "saya belajar karena ingin tahu", "saya belajar karena ingin mendapat nilai", "saya belajar karena orang tua", "saya merasa belajar di sekolah membuang waktu"]
             lm_vals = [get_val(c) for c in lm_cols]
             lm_vals[4] = 6 - lm_vals[4]
             data_s["Learning_Motivation"] = sum(lm_vals) / 5.0
 
+            # 3. School Support (5 butir)
             ss_cols = ["guru-guru menuntut saya", "guru-guru di sekolah saya mengajar", "guru memberikan perhatian", "suasana di sekolah saya mendukung", "fasilitas sekolah (perpustakaan"]
             data_s["School_Support"] = sum([get_val(c) for c in ss_cols]) / 5.0
 
+            # 4. Parental Involvement (6 butir)
             pi_cols = ["orang tua menyediakan waktu", "orang tua mendorong saya", "orang tua menghargai prestasi", "orang tua menyediakan fasilitas", "orang tua memantau kegiatan", "orang tua menanyakan tentang nilai"]
             data_s["Parental_Involvement"] = sum([get_val(c) for c in pi_cols]) / 6.0
 
+            # 5. Academic Anxiety (5 butir, 2 reverse)
             aa_cols = ["saya merasa cemas menghadapi ujian", "saya merasa tertekan dengan target", "saya malas belajar (r)", "menurut saya, materi pelajaran terlalu sulit", "orang tua saya menuntut nilai yang tinggi"]
             aa_vals = [get_val(c) for c in aa_cols]
             aa_vals[2] = 6 - aa_vals[2]
             aa_vals[3] = 6 - aa_vals[3]
             data_s["Academic_Anxiety"] = sum(aa_vals) / 5.0
 
+            # Simpan ke Database
             db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_s}, upsert=True)
             db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}}, upsert=True)
             count += 1
             
         return count
 
-    # PROSES FILE DATA_SIAP_UPLOAD (SUDAH DIRATA-RATA)
+    # =========================================================
+    # PROSES FILE DATA_SIAP_UPLOAD (Excel yang sudah dirata-rata)
+    # =========================================================
     else:
         kolom_nisn = cols_lower.get("nisn") or cols_lower.get("nis")
         if not kolom_nisn: return 0
