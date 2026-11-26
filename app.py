@@ -811,11 +811,20 @@ elif st.session_state.current_page == "list_survei":
     refresh_pengaruh(); df_siswa = pd.DataFrame(st.session_state.database_siswa)
     if not df_siswa.empty:
         cari = st.text_input("🔍 Cari nama atau NISN:")
-        if cari: df_siswa = df_siswa[df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)]
+        if cari: 
+            df_siswa = df_siswa[
+                df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | 
+                df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)
+            ]
         
-        items_per_page = 10; total_pages = math.ceil(len(df_siswa) / items_per_page)
-        if st.session_state.page_survei > total_pages: st.session_state.page_survei = total_pages
-        if st.session_state.page_survei < 1: st.session_state.page_survei = 1
+        items_per_page = 10
+        # 🔥 FIX: Paksa minimal 1 halaman
+        total_pages = max(1, math.ceil(len(df_siswa) / items_per_page)) if len(df_siswa) > 0 else 1
+        
+        if st.session_state.page_survei > total_pages: 
+            st.session_state.page_survei = total_pages
+        if st.session_state.page_survei < 1: 
+            st.session_state.page_survei = 1
             
         df_page = df_siswa.iloc[(st.session_state.page_survei - 1) * items_per_page : (st.session_state.page_survei) * items_per_page]
 
@@ -835,7 +844,8 @@ elif st.session_state.current_page == "list_survei":
 
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
-            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_survei == 1), use_container_width=True): st.session_state.page_survei -= 1; st.rerun()
+            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_survei == 1), use_container_width=True): 
+                st.session_state.page_survei -= 1; st.rerun()
         with p2:
             c_l, c_m, c_r = st.columns([1, 1.5, 1])
             with c_m:
@@ -843,10 +853,14 @@ elif st.session_state.current_page == "list_survei":
                 with col_t1: st.markdown("<div style='text-align:right; padding-top:12px;'>Halaman</div>", unsafe_allow_html=True)
                 with col_sel:
                     sel_page = st.selectbox("Lompat", options=list(range(1, total_pages + 1)), index=st.session_state.page_survei - 1, label_visibility="collapsed")
-                    if sel_page != st.session_state.page_survei: st.session_state.page_survei = sel_page; st.rerun()
+                    if sel_page != st.session_state.page_survei: 
+                        st.session_state.page_survei = sel_page; st.rerun()
                 with col_t2: st.markdown(f"<div style='text-align:left; padding-top:12px;'>dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
         with p3:
-            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): st.session_state.page_survei += 1; st.rerun()
+            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): 
+                st.session_state.page_survei += 1; st.rerun()
+    else:
+        st.info("Belum ada data siswa.")
 
 # ================================================================
 # HALAMAN: DAFTAR NILAI
@@ -856,26 +870,41 @@ elif st.session_state.current_page == "list_nilai":
     df_siswa = pd.DataFrame(st.session_state.database_siswa)
     if not df_siswa.empty:
         cari = st.text_input("🔍 Cari nama atau NISN:", key="cari_nilai")
-        if cari: df_siswa = df_siswa[df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)]
-        items_per_page = 10; total_pages = max(1, math.ceil(len(df_siswa) / items_per_page))
-        if st.session_state.page_nilai > total_pages: st.session_state.page_nilai = total_pages
-        if st.session_state.page_nilai < 1: st.session_state.page_nilai = 1
+        if cari: 
+            df_siswa = df_siswa[
+                df_siswa['Nama'].astype(str).str.contains(cari, case=False, na=False) | 
+                df_siswa['NISN'].astype(str).str.contains(cari, case=False, na=False)
+            ]
+        
+        items_per_page = 10
+        # 🔥 FIX: Paksa minimal 1 halaman
+        total_pages = max(1, math.ceil(len(df_siswa) / items_per_page)) if len(df_siswa) > 0 else 1
+        
+        if st.session_state.page_nilai > total_pages: 
+            st.session_state.page_nilai = total_pages
+        if st.session_state.page_nilai < 1: 
+            st.session_state.page_nilai = 1
 
         df_page = df_siswa.iloc[(st.session_state.page_nilai - 1) * items_per_page : st.session_state.page_nilai * items_per_page]
 
         for idx, row in df_page.iterrows():
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
-            c1.write(f"**{row['NISN']}**"); c2.write(f"**{row['Nama']}**")
+            c1.write(f"**{row['NISN']}**")
+            c2.write(f"**{row['Nama']}**")
             nilai_rata = safe_float(row.get('Nilai Akademik', 0))
-            c3.write(f"Rata-rata: **{nilai_rata:.2f}**"); c4.write(f"Status: {'Lengkap' if nilai_rata > 0 else 'Kosong'}")
+            c3.write(f"Rata-rata: **{nilai_rata:.2f}**")
+            c4.write(f"Status: {'Lengkap' if nilai_rata > 0 else 'Kosong'}")
             with c5:
                 if st.button("Ubah", key=f"edit_nilai_{row['NISN']}"):
-                    st.session_state.edit_nisn = row['NISN']; st.session_state.edit_back_page = "list_nilai"; st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
+                    st.session_state.edit_nisn = row['NISN']
+                    st.session_state.edit_back_page = "list_nilai"
+                    st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
-            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_nilai == 1), use_container_width=True, key="prev_nilai"): st.session_state.page_nilai -= 1; st.rerun()
+            if st.button("⬅️ Sebelumnya", disabled=(st.session_state.page_nilai == 1), use_container_width=True, key="prev_nilai"):
+                st.session_state.page_nilai -= 1; st.rerun()
         with p2:
             c_l, c_m, c_r = st.columns([1, 1.5, 1])
             with c_m:
@@ -883,10 +912,14 @@ elif st.session_state.current_page == "list_nilai":
                 with col_t1: st.markdown("<div style='text-align:right; padding-top:12px;'>Halaman</div>", unsafe_allow_html=True)
                 with col_sel:
                     sel_page = st.selectbox("Lompat", options=list(range(1, total_pages + 1)), index=st.session_state.page_nilai - 1, label_visibility="collapsed", key="sel_nilai")
-                    if sel_page != st.session_state.page_nilai: st.session_state.page_nilai = sel_page; st.rerun()
+                    if sel_page != st.session_state.page_nilai:
+                        st.session_state.page_nilai = sel_page; st.rerun()
                 with col_t2: st.markdown(f"<div style='text-align:left; padding-top:12px;'>dari <b>{total_pages}</b></div>", unsafe_allow_html=True)
         with p3:
-            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_nilai == total_pages), use_container_width=True, key="next_nilai"): st.session_state.page_nilai += 1; st.rerun()
+            if st.button("Berikutnya ➡️", disabled=(st.session_state.page_nilai == total_pages), use_container_width=True, key="next_nilai"):
+                st.session_state.page_nilai += 1; st.rerun()
+    else:
+        st.info("Belum ada data nilai.")
 
 # ================================================================
 # HALAMAN: EDIT SISWA LENGKAP (GABUNGAN SURVEI & NILAI)
