@@ -211,7 +211,7 @@ def save_upload_history(history):
     with open(UPLOAD_HISTORY_FILE, "w") as f:
         json.dump(history, f, indent=4)
 
-# --- FITUR HAPUS NILAI SAJA (SURVEI TETAP AMAN) ---
+# --- FITUR HAPUS NILAI SAJA (UNTUK FITUR UPLOAD EXCEL) ---
 def hapus_nilai_saja(nisn):
     """
     Menghapus HANYA data nilai siswa (Nilai Akademik + Nilai_<mapel>).
@@ -240,7 +240,7 @@ def hapus_nilai_saja(nisn):
         if not kolom_nilai:
             return False, "Tidak ada kolom nilai untuk dihapus."
         
-        # Update pakai fungsi dari db_storage (kirim 0.0 / None)
+        # Update pakai fungsi dari db_storage
         sukses, pesan = update_nilai_siswa(nisn, kolom_nilai)
         
         if sukses:
@@ -812,7 +812,7 @@ elif st.session_state.current_page == "monitoring":
 
             with col_hapus_upload:
                 st.markdown("**Hapus Berdasarkan Riwayat Upload**")
-                st.caption("Gunakan ini jika salah *upload* data Excel.")
+                st.caption("Gunakan ini jika salah *upload* data Excel. (Hanya menghapus nilai, survei tetap aman).")
                 
                 history = load_upload_history()
                 if history:
@@ -822,17 +822,17 @@ elif st.session_state.current_page == "monitoring":
                     pilihan = st.selectbox("Pilih Riwayat Upload:", list(options.keys()), key="hapus_upload_select")
                     
                     if not st.session_state.confirm_delete_upload:
-                        if st.button(f"🗑️ Hapus Data Upload Ini", type="primary", use_container_width=True):
+                        if st.button(f"🗑️ Hapus Nilai Upload Ini", type="primary", use_container_width=True):
                             st.session_state.confirm_delete_upload = pilihan
                             st.rerun()
                     else:
-                        st.warning(f"Yakin menghapus data dari upload **{st.session_state.confirm_delete_upload}**?")
+                        st.warning(f"Yakin menghapus nilai dari upload **{st.session_state.confirm_delete_upload}**?")
                         c_yes, c_no = st.columns(2)
                         if c_yes.button("Ya, Hapus", key="yes_del_upload", type="primary"):
                             selected_batch = options.get(st.session_state.confirm_delete_upload)
                             if selected_batch:
                                 for n in selected_batch['nisns']:
-                                    hapus_nilai_saja(n) # <--- UBAH DISINI: Hanya hapus NILAI
+                                    hapus_nilai_saja(n) # Hanya hapus NILAI
                                 # Remove from history
                                 history = [h for h in history if h['id'] != selected_batch['id']]
                                 save_upload_history(history)
@@ -849,7 +849,8 @@ elif st.session_state.current_page == "monitoring":
 
             # --- DAFTAR SISWA ---
             for idx, row in df_siswa.iterrows():
-                c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 2.5])
+                # Lebar kolom tombol diperlebar (dari 2.5 menjadi 3.5) agar tulisan tidak terpotong
+                c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 3.5])
                 c1.write(f"**{row.get('NISN', '-')}**")
                 c2.write(f"**{row['Nama']}**")
                 c3.write(f"Kelas: {row.get('Kelas', '-')}")
@@ -862,13 +863,11 @@ elif st.session_state.current_page == "monitoring":
                         st.session_state.edit_back_page = "monitoring"
                         st.session_state.current_page = "edit_siswa_lengkap" 
                         st.rerun()
-                    # TOMBOL HAPUS: Hanya menghapus NILAI
-                    if b2.button("🗑️ Hapus Nilai", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Nilai Saja (Survei tetap aman)"):
-                        sukses, pesan = hapus_nilai_saja(row['NISN'])
-                        if sukses:
-                            st.success(pesan)
-                        else:
-                            st.error(pesan)
+                    
+                    # TOMBOL HAPUS TOTAL (Siswa hilang dari dashboard)
+                    if b2.button("🗑️ Hapus", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Total Siswa"):
+                        hapus_survei_siswa(row['NISN'])
+                        st.success("Siswa berhasil dihapus total!")
                         st.rerun()
 
                 st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
@@ -902,14 +901,11 @@ elif st.session_state.current_page == "list_survei":
             with c5:
                 if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"): reset_password_siswa(row['NISN']); st.success("Direset!"); st.rerun()
             with c6:
-                # Di sini juga diganti menjadi Hapus Nilai
-                if st.button("🗑️ Hapus Nilai", key=f"del_survei_{row['NISN']}", type="primary"): 
-                    sukses, pesan = hapus_nilai_saja(row['NISN'])
-                    if sukses:
-                        st.success(pesan)
-                    else:
-                        st.error(pesan)
-                    st.rerun()
+                # Tetap gunakan hapus total di sini agar siswa bisa dihapus bersih
+                if st.button("🗑️ Hapus", key=f"del_survei_{row['NISN']}", type="primary"): 
+                    hapus_survei_siswa(row['NISN'])
+                    st.success("Siswa dihapus!")
+                    refresh_pengaruh(); st.rerun()
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns([1, 2, 1])
