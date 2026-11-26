@@ -150,8 +150,11 @@ def get_data_gabungan():
         s = surveis.get(nisn, {})
         
         row = {**m, **s}
-        if "Nama" not in row or not row["Nama"]: row["Nama"] = s.get("Nama", f"Siswa {nisn}")
-        if "Kelas" not in row or not row["Kelas"]: row["Kelas"] = s.get("Kelas", "-")
+        if "Nama" not in row or not row["Nama"]: 
+            row["Nama"] = s.get("Nama", m.get("Nama", f"Siswa {nisn}"))
+        if "Kelas" not in row or not row["Kelas"]: 
+            row["Kelas"] = s.get("Kelas", m.get("Kelas", "-"))
+            
         row["NISN"] = nisn
         row["Nilai Akademik"] = m.get("Nilai", 0)
         data_gabungan.append(row)
@@ -167,64 +170,113 @@ def import_data_historis_lengkap(df_excel):
     db = _db()
     count_master = 0
     
-    # Kolom psikologis
-    kolom_survei = ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]
-    # Kolom nilai
-    kolom_master = ["NISN", "Nama", "Kelas", "Nilai"] + [c for c in df_excel.columns if '_S1' in c or '_S2' in c]
-    # Kolom demografi
-    kolom_demografi = [
-        "Usia", "Pendidikan Terakhir Ayah", "Pendidikan Terakhir Ibu", 
-        "Perkiraan Pendapatan Orang Tua per bulan", "Jarak rumah ke sekolah",
-        "Fasilitas yang tersedia di rumah (centang semua yang sesuai):",
-        "Rata-rata berapa jam per hari kamu menggunakan gadget/HP di luar keperluan belajar (bermain game, media sosial, menonton video)?",
-        "Rata-rata berapa jam kamu BELAJAR DI RUMAH setiap hari (di luar jam sekolah)?",
-        "Berapa jam per MINGGU kamu mengikuti LES / BIMBINGAN BELAJAR di luar sekolah  ?",
-        "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?"
-    ]
+    # 1. Deteksi nama kolom NISN (bisa "NISN" atau "NIS")
+    kolom_nisn = "NISN" if "NISN" in df_excel.columns else ("NIS" if "NIS" in df_excel.columns else None)
+    if not kolom_nisn:
+        return 0 # Gagal, tidak ada NISN/NIS
 
+    # 2. Cek apakah ini file SURVEI (punya kolom Self_Efficacy) atau file NILAI
+    is_file_survei = "Self_Efficacy" in df_excel.columns
+    is_file_nilai = any(c in df_excel.columns for c in ["Pend. Agama", "Matematika", "B Indo", "IPA"])
+
+    # 3. Daftar kolom yang diabaikan (bukan nilai mapel)
+    kolom_diabaikan = [
+        "NO", "NIS", "NISN", "Nama", "NAMA", "Nama Siswa", "NAMA SISWA", "Kelas", "KELAS", 
+        "Rata-rata", "RATA-RATA", "Rata-2", "Jumlah", "PERINGKAT", "1", "2"
+    ] + list(NON_LIKERT_ITEMS.keys() if 'NON_LIKERT_ITEMS' in globals() else []) + [
+        "Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"
+    ]
+    
+    # Cari kolom nilai mapel (yang isinya angka)
+    kolom_mapel = []
+    for c in df_excel.columns:
+        c_clean = str(c).strip()
+        if c_clean in kolom_diabaikan: continue
+        if pd.api.types.is_numeric_dtype(df_excel[c]):
+            kolom_mapel.append(c)
+
+    # 4. Loop setiap baris siswa
     for index, row in df_excel.iterrows():
-        nisn = clean_nisn(row["NISN"])
+        nisn = clean_nisn(row[kolom_nisn])
         if not nisn: continue
         
-        # 1. SIMPAN NILAI (MASTER)
-        data_master = {"NISN": nisn}
-        for k in kolom_master:
-            if k != "NISN" and k in df_excel.columns: 
-                data_master[k] = row[k]
-        
-        # Hitung rata-rata otomatis jika kolom "Nilai" tidak ada
-        if "Nilai" not in data_master:
-            nilai_mapel = [row[c] for c in kolom_master if c not in ["NISN", "Nama", "Kelas", "Nilai"] and pd.notna(row[c])]
-            if nilai_mapel:
-                data_master["Nilai"] = sum(nilai_mapel) / len(nilai_mapel)
-                
-        db["siswa_master"].update_one({"NISN": nisn}, {"$set": data_master}, upsert=True)
-        count_master += 1
-        
-        # 2. SIMPAN SURVEI & DEMOGRAFI
-        data_survei = {"NISN": nisn}
-        for k in kolom_survei:
-            if k in df_excel.columns and pd.notna(row[k]):
-                data_survei[k] = float(row[k])
-                
-        for k in kolom_demografi:
-            if k in df_excel.columns and pd.notna(row[k]):
-                data_survei[k] = row[k]
-                
-        if "Nama" in df_excel.columns: data_survei["Nama"] = row["Nama"]
-        if "Kelas" in df_excel.columns: data_survei["Kelas"] = row["Kelas"]
+        # ==========================================
+        # PROSES DATA (JIKA INI FILE SURVEI)
+        # ==========================================
+        if is_file_survei:
+            data_survei = {"NISN": nisn}
+            
+            # Ambil psikologis
+            for k in ["Self_Efficacy", "Academic_Anxiety", "School_Support", "Parental_Involvement", "Learning_Motivation"]:
+                if k in df_excel.columns and pd.notna(row[k]):
+                    data_survei[k] = float(row[k])
+            
+            # Ambil demografi
+            if 'NON_LIKERT_ITEMS' in globals():
+                for k in NON_LIKERT_ITEMS.keys():
+                    if k in df_excel.columns and pd.notna(row[k]):
+                        data_survei[k] = row[k]
+                        
+            if "Nama" in df_excel.columns: data_survei["Nama"] = row["Nama"]
+            if "Kelas" in df_excel.columns: data_survei["Kelas"] = row["Kelas"]
 
-        db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_survei}, upsert=True)
-        
-        # 3. BUAT AKUN & TANDAI SUDAH ISI
-        if not db["siswa_akun"].find_one({"NISN": nisn}):
-            db["siswa_akun"].insert_one({
-                "NISN": nisn, 
-                "Password_Hash": hash_password(nisn), 
-                "sudah_isi_survei": True
-            })
-        else:
-            db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}})
+            db["siswa_survei"].update_one({"NISN": nisn}, {"$set": data_survei}, upsert=True)
+            
+            # Tandai akun sudah isi survei
+            if not db["siswa_akun"].find_one({"NISN": nisn}):
+                db["siswa_akun"].insert_one({
+                    "NISN": nisn, 
+                    "Password_Hash": hash_password(nisn), 
+                    "sudah_isi_survei": True
+                })
+            else:
+                db["siswa_akun"].update_one({"NISN": nisn}, {"$set": {"sudah_isi_survei": True}})
+                
+            count_master += 1
+            
+        # ==========================================
+        # PROSES DATA (JIKA INI FILE NILAI)
+        # ==========================================
+        elif is_file_nilai:
+            data_master = {"NISN": nisn}
+            
+            if "NAMA" in df_excel.columns: data_master["Nama"] = row["NAMA"]
+            elif "Nama" in df_excel.columns: data_master["Nama"] = row["Nama"]
+            elif "Nama Siswa" in df_excel.columns: data_master["Nama"] = row["Nama Siswa"]
+            
+            if "Kelas" in df_excel.columns: data_master["Kelas"] = row["Kelas"]
+            
+            # Ambil nilai mapel
+            nilai_terkumpul = []
+            for m in kolom_mapel:
+                val = row[m]
+                if pd.notna(val) and isinstance(val, (int, float, float)):
+                    data_master[f"Nilai_{m}"] = float(val)
+                    nilai_terkumpul.append(float(val))
+            
+            # Hitung rata-rata
+            if nilai_terkumpul:
+                data_master["Nilai"] = sum(nilai_terkumpul) / len(nilai_terkumpul)
+            else:
+                # Kalau Excel sudah punya kolom rata-rata, pakai itu
+                if "RATA-RATA" in df_excel.columns and pd.notna(row["RATA-RATA"]):
+                    data_master["Nilai"] = float(row["RATA-RATA"])
+                elif "Rata-rata" in df_excel.columns and pd.notna(row["Rata-rata"]):
+                    data_master["Nilai"] = float(row["Rata-rata"])
+                else:
+                    data_master["Nilai"] = 0.0
+                    
+            db["siswa_master"].update_one({"NISN": nisn}, {"$set": data_master}, upsert=True)
+            
+            # Buatkan akun siswa jika belum ada
+            if not db["siswa_akun"].find_one({"NISN": nisn}):
+                db["siswa_akun"].insert_one({
+                    "NISN": nisn, 
+                    "Password_Hash": hash_password(nisn), 
+                    "sudah_isi_survei": False
+                })
+                
+            count_master += 1
             
     return count_master
 
