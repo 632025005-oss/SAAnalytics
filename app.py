@@ -829,7 +829,6 @@ elif st.session_state.current_page == "list_nilai":
         if st.session_state.page_nilai < 1: st.session_state.page_nilai = 1
 
         df_page = df_siswa.iloc[(st.session_state.page_nilai - 1) * items_per_page : st.session_state.page_nilai * items_per_page]
-        mapel_list = get_mapel_list(df_siswa)
 
         for idx, row in df_page.iterrows():
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
@@ -844,19 +843,7 @@ elif st.session_state.current_page == "list_nilai":
                     st.session_state.edit_back_page = "list_nilai"
                     st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
 
-            ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
-            
-            if ada_mapel:
-                with st.expander("📋 Lihat rincian per mata pelajaran"):
-                    cols = st.columns(2)
-                    for i, m in enumerate(mapel_list):
-                        col = cols[i % 2]
-                        col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
-                        if col_name in row.index and pd.notna(row[col_name]):
-                            col.markdown(f"**{m}**: {safe_float(row[col_name]):.2f}")
-            else:
-                st.caption("_Belum ada rincian per mapel. Klik 'Ubah' untuk mengisi._")
-
+            # Expander rincian mapel dihapus sesuai permintaan
             st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
         p1, p2, p3 = st.columns([1, 2, 1])
@@ -894,29 +881,21 @@ elif st.session_state.current_page == "edit_siswa_lengkap":
         # Tombol Kembali di atas
         if st.button("⬅️ Kembali ke Daftar", key="back_edit_siswa"):
             st.session_state.current_page = back_page
-            # Set menu agar sidebar sinkron
             for k, v in mapping_menu.items():
                 if v == back_page: st.session_state.last_menu = k; break
             st.rerun()
 
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
-        st.markdown(f"### Edit Data Siswa: {siswa['Nama']} ({siswa['NISN']})")
-        
-        # TABS UNTUK SURVEI DAN NILAI
-        tab_survei, tab_nilai = st.tabs(["📝 Kuesioner & Identitas", "📊 Nilai Mata Pelajaran"])
-        
-        with tab_survei:
-            render_kuesioner_siswa(siswa['NISN'], is_preview=True)
-            
-        with tab_nilai:
+
+        def render_form_nilai_siswa(siswa_data):
             mapel_list = get_mapel_list(df)
             nilai_lama_per_mapel = {}
             for m in mapel_list:
-                col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa.index else m
-                if col_name in siswa.index and pd.notna(siswa[col_name]):
-                    nilai_lama_per_mapel[m] = safe_float(siswa[col_name], 0)
+                col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa_data.index else m
+                if col_name in siswa_data.index and pd.notna(siswa_data[col_name]):
+                    nilai_lama_per_mapel[m] = safe_float(siswa_data[col_name], 0)
 
-            nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
+            nilai_skrg = safe_float(siswa_data.get('Nilai Akademik', 0))
             default_val = nilai_skrg if nilai_skrg > 0 else 80.0
 
             with st.form("form_nilai_per_mapel_unified"):
@@ -940,12 +919,28 @@ elif st.session_state.current_page == "edit_siswa_lengkap":
                     payload = {"Nilai": rata}
                     for m, v in nilai_per_mapel.items():
                         payload[f"Nilai_{m}"] = v
-                    sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
+                    sukses, pesan = update_nilai_siswa(siswa_data['NISN'], payload)
                     if sukses:
                         st.success("Nilai berhasil disimpan!"); refresh_pengaruh()
                         st.rerun()
                     else:
                         st.error(f"Gagal: {pesan}")
+
+        # TAMPILAN DINAMIS BERDASARKAN ASAL MENU
+        if back_page == "list_nilai":
+            # HANYA TAMPILKAN FORM NILAI (TANPA TAB SURVEI)
+            st.markdown(f"### Input Nilai per Mata Pelajaran — {siswa['Nama']}")
+            render_form_nilai_siswa(siswa)
+        else:
+            # TAMPILKAN TAB (SURVEI & NILAI) JIKA DARI MANAJEMEN SISWA
+            st.markdown(f"### Edit Data Siswa: {siswa['Nama']} ({siswa['NISN']})")
+            tab_survei, tab_nilai = st.tabs(["📝 Kuesioner & Identitas", "📊 Nilai Mata Pelajaran"])
+            
+            with tab_survei:
+                render_kuesioner_siswa(siswa['NISN'], is_preview=True)
+                
+            with tab_nilai:
+                render_form_nilai_siswa(siswa)
 
 # ================================================================
 # HALAMAN: LAPORAN SISWA (DENGAN EXPORT WORD & PDF)
