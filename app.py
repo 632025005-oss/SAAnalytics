@@ -510,6 +510,7 @@ for key, val in {
     "logged_in": False, "user_nama": None, "user_role": None,
     "database_siswa": [], "current_page": "home", "last_menu": "Beranda",
     "siswa_login_nisn": None, "edit_nisn": None, "preview_nisn": None,
+    "edit_back_page": "monitoring",
     "page_survei": 1, "page_nilai": 1, "custom_dags": {}, "selected_dag": None,
     "confirm_delete_all": False
 }.items():
@@ -523,9 +524,8 @@ if st.session_state.logged_in: refresh_pengaruh()
 def render_kuesioner_siswa(nisn, is_preview=False):
     if is_preview:
         st.info(f"👁️ **Mode Pratinjau:** Anda melihat tampilan kuesioner siswa dengan NISN {nisn}.")
-        if st.button("⬅️ Kembali ke Daftar Survei", key=f"back_preview_{nisn}"):
-            st.session_state.current_page = "list_survei"; st.session_state.preview_nisn = None; st.rerun()
-    else: st.success(f"✅ Login berhasil! NISN: {nisn}")
+    else: 
+        st.success(f"✅ Login berhasil! NISN: {nisn}")
         
     st.markdown("### 📝 Kuesioner Siswa")
     df = pd.DataFrame(st.session_state.database_siswa)
@@ -576,8 +576,7 @@ def render_kuesioner_siswa(nisn, is_preview=False):
                 st.balloons(); st.success("🎉 Kuesioner disimpan!")
                 refresh_pengaruh()
                 if is_preview: 
-                    st.session_state.current_page = "list_survei"
-                    st.session_state.last_menu = "Jawaban Survei"
+                    st.session_state.current_page = st.session_state.get("edit_back_page", "monitoring")
                     st.session_state.preview_nisn = None
                     st.session_state.edit_nisn = None
                 else: 
@@ -636,8 +635,7 @@ with st.sidebar:
 
     mapping_menu = {"Beranda": "home", "Siswa": "monitoring", "Jawaban Survei": "list_survei", "Nilai Raport": "list_nilai", "Laporan Siswa": "rangkuman", "Analisis Faktor": "kausal", "Simulasi Nilai": "prediksi", "Akun": "akun", "Panduan": "tentang", "Kelola Pengguna": "admin_users", "Keluar": "logout"}
     current_page_mapped = st.session_state.current_page
-    if current_page_mapped == "edit_x": current_page_mapped = "list_survei"
-    if current_page_mapped == "edit_y": current_page_mapped = "list_nilai"
+    if current_page_mapped == "edit_siswa_lengkap": current_page_mapped = st.session_state.get("edit_back_page", "monitoring")
 
     default_idx = next((i for i, opt in enumerate(menu_options) if mapping_menu.get(opt) == current_page_mapped), 0)
     menu_choice = option_menu(None, menu_options, icons=menu_icons, default_index=default_idx, key="sidebar_menu",
@@ -692,7 +690,7 @@ if st.session_state.current_page == "home":
         st.markdown(f"""<ul style="list-style-type: none; padding-left: 0; font-size: 0.9rem; line-height: 2; color: #475569;"><li>📄 <b>{x_belum_isi} siswa</b> belum mengisi survei</li></ul><hr></div>""", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: MANAJEMEN SISWA (DIGABUNG JADI SATU)
+# HALAMAN: MANAJEMEN SISWA
 # ================================================================
 elif st.session_state.current_page == "monitoring":
     st.title("Daftar & Manajemen Siswa")
@@ -745,10 +743,7 @@ elif st.session_state.current_page == "monitoring":
                         st.rerun()
             st.markdown("---")
 
-            mapel_list = get_mapel_list(df_siswa)
-
             for idx, row in df_siswa.iterrows():
-                # Perbaikan UI: Gunakan kolom yang lebih proporsional agar tidak bug
                 c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 2.5])
                 c1.write(f"**{row.get('NISN', '-')}**")
                 c2.write(f"**{row['Nama']}**")
@@ -759,38 +754,14 @@ elif st.session_state.current_page == "monitoring":
                     b1, b2 = st.columns(2)
                     if b1.button("📝 Edit", key=f"edit_{row['NISN']}", use_container_width=True, help="Edit Data Siswa"):
                         st.session_state.edit_nisn = row['NISN']
-                        st.session_state.current_page = "edit_x" 
+                        st.session_state.edit_back_page = "monitoring"
+                        st.session_state.current_page = "edit_siswa_lengkap" 
                         st.rerun()
                     if b2.button("🗑️ Hapus", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Siswa"):
                         hapus_survei_siswa(row['NISN'])
                         st.success("Siswa dihapus!")
                         refresh_pengaruh(); st.rerun()
 
-                # DATA SURVEI & NILAI MAPEL DIGABUNG JADI SATU (SIMPLE)
-                with st.expander("🔍 Lihat Detail Data (Survei & Nilai Mapel)"):
-                    c_survei, c_mapel = st.columns(2)
-                    with c_survei:
-                        st.markdown("**Hasil Survei Psikologis:**")
-                        if pd.notna(row.get("Self_Efficacy")):
-                            st.write(f"- Percaya Diri: {safe_float(row.get('Self_Efficacy')):.2f}")
-                            st.write(f"- Semangat Belajar: {safe_float(row.get('Learning_Motivation')):.2f}")
-                            st.write(f"- Dukungan Orang Tua: {safe_float(row.get('Parental_Involvement')):.2f}")
-                            st.write(f"- Dukungan Sekolah: {safe_float(row.get('School_Support')):.2f}")
-                            st.write(f"- Rasa Cemas: {safe_float(row.get('Academic_Anxiety')):.2f}")
-                        else:
-                            st.caption("Belum mengisi survei.")
-                    
-                    with c_mapel:
-                        st.markdown("**Nilai Per Mata Pelajaran:**")
-                        ada_mapel = False
-                        for m in mapel_list:
-                            col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
-                            if col_name in row.index and pd.notna(row[col_name]):
-                                st.write(f"- {m}: **{safe_float(row[col_name]):.2f}**")
-                                ada_mapel = True
-                        if not ada_mapel:
-                            st.caption("Belum ada nilai mapel.")
-                
                 st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
 # ================================================================
@@ -816,7 +787,9 @@ elif st.session_state.current_page == "list_survei":
             c3.write(f"Terisi: {status}")
             with c4:
                 if st.button("Ubah", key=f"edit_survei_{row['NISN']}"): 
-                    st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
+                    st.session_state.edit_nisn = row['NISN']
+                    st.session_state.edit_back_page = "list_survei"
+                    st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
             with c5:
                 if st.button("🔑 Reset Pass", key=f"reset_pw_{row['NISN']}"): reset_password_siswa(row['NISN']); st.success("Direset!"); st.rerun()
             with c6:
@@ -839,7 +812,7 @@ elif st.session_state.current_page == "list_survei":
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): st.session_state.page_survei += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL)
+# HALAMAN: DAFTAR NILAI
 # ================================================================
 elif st.session_state.current_page == "list_nilai":
     st.title("Data Nilai Raport Siswa")
@@ -868,7 +841,8 @@ elif st.session_state.current_page == "list_nilai":
             with c5:
                 if st.button("Ubah", key=f"edit_nilai_{row['NISN']}"):
                     st.session_state.edit_nisn = row['NISN']
-                    st.session_state.current_page = "edit_y"; st.rerun()
+                    st.session_state.edit_back_page = "list_nilai"
+                    st.session_state.current_page = "edit_siswa_lengkap"; st.rerun()
 
             ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
             
@@ -906,70 +880,72 @@ elif st.session_state.current_page == "list_nilai":
                 st.session_state.page_nilai += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: EDIT SURVEI
+# HALAMAN: EDIT SISWA LENGKAP (GABUNGAN SURVEI & NILAI)
 # ================================================================
-elif st.session_state.current_page == "edit_x":
-    df = pd.DataFrame(st.session_state.database_siswa)
-    if st.session_state.get("edit_nisn") is None or df.empty:
-        st.warning("Pilih siswa dulu."); 
-        if st.button("Kembali", key="back_edit_x_empty"): st.session_state.current_page = "list_survei"; st.rerun()
-    else:
-        if st.button("⬅️ Kembali ke Daftar Survei", key="back_edit_x"): st.session_state.current_page = "list_survei"; st.session_state.last_menu = "Jawaban Survei"; st.rerun()
-        siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
-        render_kuesioner_siswa(siswa['NISN'], is_preview=True)
-
-# ================================================================
-# HALAMAN: EDIT NILAI (PER MATA PELAJARAN)
-# ================================================================
-elif st.session_state.current_page == "edit_y":
+elif st.session_state.current_page == "edit_siswa_lengkap":
     df = pd.DataFrame(st.session_state.database_siswa)
     if st.session_state.get("edit_nisn") is None or df.empty:
         st.warning("Pilih siswa dulu.")
-        if st.button("Kembali", key="back_edit_y_empty"): st.session_state.current_page = "list_nilai"; st.rerun()
+        if st.button("Kembali", key="back_edit_empty"): 
+            st.session_state.current_page = st.session_state.get("edit_back_page", "monitoring"); st.rerun()
     else:
-        if st.button("⬅️ Kembali ke Daftar Nilai", key="back_edit_y"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
-        siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
-
-        mapel_list = get_mapel_list(df)
+        back_page = st.session_state.get("edit_back_page", "monitoring")
         
-        nilai_lama_per_mapel = {}
-        for m in mapel_list:
-            col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa.index else m
-            if col_name in siswa.index and pd.notna(siswa[col_name]):
-                nilai_lama_per_mapel[m] = safe_float(siswa[col_name], 0)
+        # Tombol Kembali di atas
+        if st.button("⬅️ Kembali ke Daftar", key="back_edit_siswa"):
+            st.session_state.current_page = back_page
+            # Set menu agar sidebar sinkron
+            for k, v in mapping_menu.items():
+                if v == back_page: st.session_state.last_menu = k; break
+            st.rerun()
 
-        nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
-        default_val = nilai_skrg if nilai_skrg > 0 else 80.0
+        siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
+        st.markdown(f"### Edit Data Siswa: {siswa['Nama']} ({siswa['NISN']})")
+        
+        # TABS UNTUK SURVEI DAN NILAI
+        tab_survei, tab_nilai = st.tabs(["📝 Kuesioner & Identitas", "📊 Nilai Mata Pelajaran"])
+        
+        with tab_survei:
+            render_kuesioner_siswa(siswa['NISN'], is_preview=True)
+            
+        with tab_nilai:
+            mapel_list = get_mapel_list(df)
+            nilai_lama_per_mapel = {}
+            for m in mapel_list:
+                col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa.index else m
+                if col_name in siswa.index and pd.notna(siswa[col_name]):
+                    nilai_lama_per_mapel[m] = safe_float(siswa[col_name], 0)
 
-        st.markdown(f"### Input Nilai per Mata Pelajaran — {siswa['Nama']}")
+            nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
+            default_val = nilai_skrg if nilai_skrg > 0 else 80.0
 
-        with st.form("form_nilai_per_mapel"):
-            c1, c2 = st.columns(2)
-            nilai_per_mapel = {}
-            for i, m in enumerate(mapel_list):
-                col = c1 if i % 2 == 0 else c2
-                default_m = nilai_lama_per_mapel.get(m, default_val)
-                nilai_per_mapel[m] = col.number_input(
-                    m, min_value=0.0, max_value=100.0, value=default_m, step=0.1, key=f"nilai_m_{m}"
-                )
+            with st.form("form_nilai_per_mapel_unified"):
+                c1, c2 = st.columns(2)
+                nilai_per_mapel = {}
+                for i, m in enumerate(mapel_list):
+                    col = c1 if i % 2 == 0 else c2
+                    default_m = nilai_lama_per_mapel.get(m, default_val)
+                    nilai_per_mapel[m] = col.number_input(
+                        m, min_value=0.0, max_value=100.0, value=default_m, step=0.1, key=f"nilai_unified_{m}"
+                    )
 
-            rata = sum(nilai_per_mapel.values()) / len(nilai_per_mapel) if nilai_per_mapel else 0.0
-            kat, warna = kategori_nilai(rata)
-            st.markdown(f"""<div style="background:#f0fdfa; border-left:4px solid {warna}; padding:1rem; border-radius:6px; margin-top:1rem;">
-                <b>Rata-rata Nilai:</b> <span style="font-size:1.5rem; font-weight:700; color:{warna};">{rata:.2f}</span>
-                &nbsp;—&nbsp; Kategori: <b>{kat}</b>
-            </div>""", unsafe_allow_html=True)
+                rata = sum(nilai_per_mapel.values()) / len(nilai_per_mapel) if nilai_per_mapel else 0.0
+                kat, warna = kategori_nilai(rata)
+                st.markdown(f"""<div style="background:#f0fdfa; border-left:4px solid {warna}; padding:1rem; border-radius:6px; margin-top:1rem;">
+                    <b>Rata-rata Nilai:</b> <span style="font-size:1.5rem; font-weight:700; color:{warna};">{rata:.2f}</span>
+                    &nbsp;—&nbsp; Kategori: <b>{kat}</b>
+                </div>""", unsafe_allow_html=True)
 
-            if st.form_submit_button("Simpan Nilai", type="primary"):
-                payload = {"Nilai": rata}
-                for m, v in nilai_per_mapel.items():
-                    payload[f"Nilai_{m}"] = v
-                sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
-                if sukses:
-                    st.success("Nilai berhasil disimpan!"); refresh_pengaruh()
-                    st.session_state.current_page = "list_nilai"; st.rerun()
-                else:
-                    st.error(f"Gagal: {pesan}")
+                if st.form_submit_button("Simpan Nilai", type="primary"):
+                    payload = {"Nilai": rata}
+                    for m, v in nilai_per_mapel.items():
+                        payload[f"Nilai_{m}"] = v
+                    sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
+                    if sukses:
+                        st.success("Nilai berhasil disimpan!"); refresh_pengaruh()
+                        st.rerun()
+                    else:
+                        st.error(f"Gagal: {pesan}")
 
 # ================================================================
 # HALAMAN: LAPORAN SISWA (DENGAN EXPORT WORD & PDF)
