@@ -692,7 +692,7 @@ if st.session_state.current_page == "home":
         st.markdown(f"""<ul style="list-style-type: none; padding-left: 0; font-size: 0.9rem; line-height: 2; color: #475569;"><li>📄 <b>{x_belum_isi} siswa</b> belum mengisi survei</li></ul><hr></div>""", unsafe_allow_html=True)
 
 # ================================================================
-# HALAMAN: MANAJEMEN SISWA (DENGAN RINCIAN MAPEL & HAPUS DATA)
+# HALAMAN: MANAJEMEN SISWA (DIGABUNG JADI SATU)
 # ================================================================
 elif st.session_state.current_page == "monitoring":
     st.title("Daftar & Manajemen Siswa")
@@ -748,36 +748,50 @@ elif st.session_state.current_page == "monitoring":
             mapel_list = get_mapel_list(df_siswa)
 
             for idx, row in df_siswa.iterrows():
-                c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 2, 2, 2, 1.5])
-                c1.write(f"**{row.get('NISN', '-')}**"); c2.write(f"**{row['Nama']}**"); c3.write(f"Kelas: {row.get('Kelas', '-')}")
+                # Perbaikan UI: Gunakan kolom yang lebih proporsional agar tidak bug
+                c1, c2, c3, c4, c5 = st.columns([1.5, 3, 1.5, 2, 2.5])
+                c1.write(f"**{row.get('NISN', '-')}**")
+                c2.write(f"**{row['Nama']}**")
+                c3.write(f"Kelas: {row.get('Kelas', '-')}")
                 c4.write(f"Rata-rata: **{safe_float(row.get('Nilai Akademik', 0)):.2f}**")
                 
-                # Rincian per mapel di dalam expander
                 with c5:
-                    ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
-                    if ada_mapel:
-                        with st.expander("📋 Mapel"):
-                            for m in mapel_list:
-                                col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
-                                if col_name in row.index and pd.notna(row[col_name]):
-                                    st.write(f"- {m}: **{safe_float(row[col_name]):.2f}**")
-                    else:
-                        st.caption("Tidak ada mapel")
-
-                with c6:
-                    b1, b2, b3 = st.columns(3)
-                    if b1.button("👁️", key=f"prev_{row['NISN']}", help="Portal"): 
+                    b1, b2 = st.columns(2)
+                    if b1.button("📝 Edit", key=f"edit_{row['NISN']}", use_container_width=True, help="Edit Data Siswa"):
                         st.session_state.edit_nisn = row['NISN']
-                        st.session_state.current_page = "edit_x"
-                        st.session_state.last_menu = "Jawaban Survei"
+                        st.session_state.current_page = "edit_x" 
                         st.rerun()
-                    if b2.button("✏️", key=f"edit_{row['NISN']}", help="Edit"): 
-                        st.session_state.edit_nisn = row['NISN']; st.session_state.current_page = "edit_x"; st.rerun()
-                    if b3.button("🗑️", key=f"del_siswa_{row['NISN']}", help="Hapus"): 
+                    if b2.button("🗑️ Hapus", key=f"del_siswa_{row['NISN']}", type="primary", use_container_width=True, help="Hapus Siswa"):
                         hapus_survei_siswa(row['NISN'])
                         st.success("Siswa dihapus!")
                         refresh_pengaruh(); st.rerun()
-                st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+
+                # DATA SURVEI & NILAI MAPEL DIGABUNG JADI SATU (SIMPLE)
+                with st.expander("🔍 Lihat Detail Data (Survei & Nilai Mapel)"):
+                    c_survei, c_mapel = st.columns(2)
+                    with c_survei:
+                        st.markdown("**Hasil Survei Psikologis:**")
+                        if pd.notna(row.get("Self_Efficacy")):
+                            st.write(f"- Percaya Diri: {safe_float(row.get('Self_Efficacy')):.2f}")
+                            st.write(f"- Semangat Belajar: {safe_float(row.get('Learning_Motivation')):.2f}")
+                            st.write(f"- Dukungan Orang Tua: {safe_float(row.get('Parental_Involvement')):.2f}")
+                            st.write(f"- Dukungan Sekolah: {safe_float(row.get('School_Support')):.2f}")
+                            st.write(f"- Rasa Cemas: {safe_float(row.get('Academic_Anxiety')):.2f}")
+                        else:
+                            st.caption("Belum mengisi survei.")
+                    
+                    with c_mapel:
+                        st.markdown("**Nilai Per Mata Pelajaran:**")
+                        ada_mapel = False
+                        for m in mapel_list:
+                            col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
+                            if col_name in row.index and pd.notna(row[col_name]):
+                                st.write(f"- {m}: **{safe_float(row[col_name]):.2f}**")
+                                ada_mapel = True
+                        if not ada_mapel:
+                            st.caption("Belum ada nilai mapel.")
+                
+                st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
 
 # ================================================================
 # HALAMAN: DAFTAR SURVEI
