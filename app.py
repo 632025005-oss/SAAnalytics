@@ -316,71 +316,69 @@ def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
 
 def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     def clean(t):
-        # Hanya izinkan karakter ASCII (mencegah error encoding PDF)
         s = str(t).encode('ascii', 'ignore').decode('ascii')
         return s if s.strip() else "-"
 
     pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_margins(15, 15, 15)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    lebar_kertas = pdf.w - pdf.l_margin - pdf.r_margin
+
+    def cetak_teks(teks, font_style='', font_size=11, align='L', spasi=6):
+        pdf.set_font('Helvetica', font_style, font_size)
+        pdf.set_x(pdf.l_margin) # Paksa posisi X kembali ke kiri
+        pdf.multi_cell(w=lebar_kertas, h=spasi, text=clean(teks), align=align)
+        pdf.set_x(pdf.l_margin) # Pastikan X di kiri untuk pemanggilan berikutnya
 
     # Judul
-    pdf.set_font('Helvetica', 'B', 16)
-    pdf.cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', ln=True, align='C')
-    pdf.set_font('Helvetica', 'I', 10)
-    pdf.cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", ln=True, align='C')
+    cetak_teks('Laporan Hasil Analisis Prestasi Siswa', font_style='B', font_size=16, align='C', spasi=10)
+    cetak_teks(f"Tanggal: {datetime.now().strftime('%d %B %Y')}", font_style='I', font_size=10, align='C', spasi=6)
     pdf.ln(5)
 
     # Identitas
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Identitas Siswa', ln=True)
-    pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"), ln=True)
-    pdf.cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"), ln=True)
-    pdf.cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"), ln=True)
+    cetak_teks('Identitas Siswa', font_style='B', font_size=12, spasi=8)
+    cetak_teks(f"Nama: {siswa.get('Nama', '-')}")
+    cetak_teks(f"NISN: {siswa.get('NISN', '-')}")
+    cetak_teks(f"Kelas: {siswa.get('Kelas', '-')}")
     pdf.ln(3)
 
     # Nilai
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Nilai Akademik', ln=True)
-    pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}", ln=True)
-    pdf.cell(0, 6, clean(f"Kategori: {kat}"), ln=True)
+    cetak_teks('Nilai Akademik', font_style='B', font_size=12, spasi=8)
+    cetak_teks(f"Nilai Rata-rata: {nilai:.2f}")
+    cetak_teks(f"Kategori: {kat}")
     pdf.ln(3)
 
     # Model
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Model Analisis', ln=True)
-    pdf.set_font('Helvetica', '', 11)
-    pdf.multi_cell(0, 6, clean(dag_pilihan))
+    cetak_teks('Model Analisis', font_style='B', font_size=12, spasi=8)
+    cetak_teks(dag_pilihan)
     pdf.ln(3)
 
     # Tabel Kontribusi
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Kontribusi Faktor', ln=True)
+    cetak_teks('Kontribusi Faktor', font_style='B', font_size=12, spasi=8)
+    
+    w1 = lebar_kertas * 0.6
+    w2 = lebar_kertas * 0.4
     
     pdf.set_font('Helvetica', 'B', 10)
-    w1 = 80
-    w2 = 80
+    pdf.set_x(pdf.l_margin)
     pdf.cell(w1, 7, "Faktor", border=1)
     pdf.cell(w2, 7, "Pengaruh (Poin)", border=1, ln=True)
     
     pdf.set_font('Helvetica', '', 10)
     for k in kontribusi_list:
+        pdf.set_x(pdf.l_margin)
         pdf.cell(w1, 6, clean(k["Faktor"]), border=1)
         pdf.cell(w2, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
     pdf.ln(5)
 
     # Narasi
-    pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Kesimpulan & Rekomendasi', ln=True)
-    pdf.set_font('Helvetica', '', 10)
+    cetak_teks('Kesimpulan & Rekomendasi', font_style='B', font_size=12, spasi=8)
     narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
-    
     for line in narasi.split("\n"):
         if line.strip():
-            pdf.multi_cell(0, 6, clean(line))
+            cetak_teks(line, font_size=10)
 
     return io.BytesIO(bytes(pdf.output()))
 
