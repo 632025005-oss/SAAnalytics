@@ -190,7 +190,7 @@ def terjemah_efek(beta, pval):
 # ================================================================
 # PAGE CONFIG & CSS
 # ================================================================
-st.set_page_config(page_title="SAA Analytics", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SAAnalytics", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -301,7 +301,7 @@ def render_kuesioner_siswa(nisn, is_preview=False):
 def halaman_login():
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<br><br><h1 style='text-align:center; color:var(--teal); font-size: 2.8rem;'>🎓 SAA Analytics</h1>", unsafe_allow_html=True)
+        st.markdown("<br><br><h1 style='text-align:center; color:var(--teal); font-size: 2.8rem;'>🎓 SAAnalytics</h1>", unsafe_allow_html=True)
         tab_login, tab_daftar, tab_siswa = st.tabs(["🔐 Login Guru/Admin", "📝 Daftar Akun Guru", "🎒 Portal Siswa"])
         with tab_login:
             with st.form("login_form"):
@@ -342,7 +342,7 @@ if not st.session_state.logged_in:
 # SIDEBAR MENU
 # ================================================================
 with st.sidebar:
-    st.markdown("""<div class="sb-logo"><div class="sb-logo-text"><h2>SAA<br><span style="font-size:1rem; font-weight:400;">Analytics</span></h2></div></div><hr>""", unsafe_allow_html=True)
+    st.markdown("""<div class="sb-logo"><div class="sb-logo-text"><h2>SAAnalytics</h2></div></div><hr>""", unsafe_allow_html=True)
     menu_options = ["Beranda", "Siswa", "Jawaban Survei", "Nilai Raport", "Laporan Siswa", "Analisis Faktor", "Simulasi Nilai", "Akun", "Panduan"]
     menu_icons = ["house-door", "people", "clipboard-data", "bar-chart", "file-earmark-text", "diagram-3", "magic", "person-circle", "info-circle"]
     if st.session_state.user_role == "admin": menu_options.extend(["Kelola Pengguna", "Keluar"]); menu_icons.extend(["gear", "box-arrow-right"])
