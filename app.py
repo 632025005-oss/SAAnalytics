@@ -121,19 +121,6 @@ NON_LIKERT_ITEMS = {
     "Berapa banyak kegiatan EKSTRAKURIKULER yang kamu ikuti di sekolah selama kelas 9 semester 1?": {"type": "number", "min": 0, "max": 10, "default": 1, "step": 1, "label": "Jumlah ekstrakurikuler"},
 }
 
-MATA_PELAJARAN = [
-    "Pendidikan Agama",
-    "PPKn",
-    "Bahasa Indonesia",
-    "Matematika",
-    "IPA",
-    "IPS",
-    "Bahasa Inggris",
-    "Seni Budaya",
-    "PJOK",
-    "Prakarya/Informatika",
-]
-
 BASELINE_ASPEK = {
     "Self_Efficacy": 4.634, "Academic_Anxiety": 3.547, "School_Support": 4.656, 
     "Parental_Involvement": 3.462, "Learning_Motivation": 4.292
@@ -186,6 +173,27 @@ def kategori_nilai(n):
     if n >= 80: return "Cukup", "#F0B900"
     return "Perlu Perhatian", "#EF5B67"
 
+def get_mapel_list(df):
+    """Mendeteksi kolom mapel secara dinamis dari dataframe"""
+    default_mapel = ["Pendidikan Agama", "PPKn", "Bahasa Indonesia", "Matematika", "IPA", "IPS", "Bahasa Inggris", "Seni Budaya", "PJOK", "Prakarya/Informatika"]
+    if df.empty: return default_mapel
+    
+    non_mapel = ['NISN', 'Nama', 'Kelas', 'Nilai Akademik', 'Self_Efficacy', 'Learning_Motivation', 'School_Support', 'Parental_Involvement', 'Academic_Anxiety']
+    non_mapel.extend(NON_LIKERT_ITEMS.keys())
+    
+    mapels = []
+    for c in df.columns:
+        if c not in non_mapel and pd.api.types.is_numeric_dtype(df[c]):
+            clean_name = c.replace("Nilai_", "")
+            if clean_name not in mapels:
+                mapels.append(clean_name)
+                
+    if not mapels: return default_mapel
+    return mapels
+
+def clean_filename(text):
+    return re.sub(r'[\\/*?:"<>|]', "", str(text))
+
 def hitung_ols_custom(df, dag_edges):
     if df.empty: return {}
     nodes = list(set([e[0] for e in dag_edges]))
@@ -214,6 +222,9 @@ def terjemah_efek(beta, pval):
         if beta < -0.5: return "Menurunkan Nilai"
         return "Sedikit Menurunkan"
 
+# ================================================================
+# NARASI LAPORAN (BAHASA AWAM)
+# ================================================================
 def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     nama = str(siswa.get("Nama", ""))
     naik = [k for k in kontribusi_list if k["Pengaruh (Poin)"] > 0.1]
@@ -222,36 +233,41 @@ def _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     turun.sort(key=lambda x: x["Pengaruh (Poin)"])
 
     narasi = [
-        f"Berdasarkan analisis menggunakan {dag_pilihan}, prestasi {nama} dengan nilai rata-rata "
-        f"{nilai:.2f} ({kat}) dipengaruhi oleh faktor-faktor berikut:",
+        f"Nilai akademik {nama} saat ini berada di angka {nilai:.2f} dengan predikat {kat}.",
+        f"Berdasarkan hasil analisis, terdapat beberapa faktor yang membuat nilai {nama} bisa seperti ini:",
         ""
     ]
+    
     if naik:
-        narasi.append("FAKTOR YANG MENINGKATKAN NILAI:")
+        narasi.append("Faktor yang Membantu Menaikkan Nilai:")
         for i, k in enumerate(naik, 1):
-            narasi.append(f"{i}. {k['Faktor']}: +{k['Pengaruh (Poin)']:.2f} poin")
+            narasi.append(f"  {i}. {k['Faktor']} (memberikan dorongan positif sebesar +{k['Pengaruh (Poin)']:.2f} poin)")
         narasi.append("")
+        
     if turun:
-        narasi.append("FAKTOR YANG MENURUNKAN NILAI:")
+        narasi.append("Faktor yang Menarik Nilai ke Bawah:")
         for i, k in enumerate(turun, 1):
-            narasi.append(f"{i}. {k['Faktor']}: {k['Pengaruh (Poin)']:.2f} poin")
+            narasi.append(f"  {i}. {k['Faktor']} (menurunkan nilai sebesar {k['Pengaruh (Poin)']:.2f} poin)")
         narasi.append("")
+        
     if not naik and not turun:
-        narasi.append("Semua faktor berada di sekitar rata-rata sekolah. Tidak ada faktor yang menonjol.")
+        narasi.append(f"Secara umum, kondisi psikologis dan lingkungan {nama} sudah seimbang dan berada di rata-rata sekolah. Tidak ada faktor yang menonjol.")
         narasi.append("")
 
-    narasi.append("REKOMENDASI:")
+    narasi.append("Rekomendasi Praktis untuk Guru & Orang Tua:")
     if naik:
-        narasi.append(f"- Pertahankan faktor {naik[0]['Faktor']} sebagai kekuatan utama.")
+        narasi.append(f"  - Terus pertahankan dan puji faktor {naik[0]['Faktor']} yang sudah bagus. Ini adalah kekuatan utama {nama}.")
     if turun:
-        narasi.append(f"- Perhatikan faktor {turun[0]['Faktor']} yang perlu ditingkatkan.")
-    if len(naik) >= 2:
-        narasi.append(f"- Faktor {naik[1]['Faktor']} juga memberi kontribusi positif yang signifikan.")
+        narasi.append(f"  - Berikan perhatian lebih pada {turun[0]['Faktor']}. Ajak {nama} berdiskusi atau berikan dukungan agar faktor ini tidak menghambat belajarnya.")
     if not naik and not turun:
-        narasi.append("- Pertahankan kondisi saat ini, atau tingkatkan faktor psikologis untuk hasil yang lebih baik.")
+        narasi.append(f"  - Ajak {nama} untuk terus mempertahankan semangat belajarnya dan jangan ragu untuk mencoba hal-hal baru agar nilainya bisa lebih maksimal.")
+    narasi.append(f"  - Berikan apresiasi atas usaha {nama} sejauh ini, karena nilai {nilai:.2f} merupakan hasil kerja kerasnya.")
 
     return "\n".join(narasi)
 
+# ================================================================
+# GENERATOR WORD & PDF
+# ================================================================
 def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     doc = Document()
     title = doc.add_heading('Laporan Hasil Analisis Prestasi Siswa', level=0)
@@ -300,63 +316,65 @@ def generate_laporan_word(siswa, nilai, kat, dag_pilihan, kontribusi_list):
 
 def generate_laporan_pdf(siswa, nilai, kat, dag_pilihan, kontribusi_list):
     def clean(t):
-        return str(t).replace("—", "-").replace("–", "-").replace("→", "->").replace("•", "-")
+        # Hanya izinkan karakter ASCII (mencegah error encoding PDF)
+        s = str(t).encode('ascii', 'ignore').decode('ascii')
+        return s if s.strip() else " "
 
     pdf = FPDF()
     pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(15, 15, 15)
 
     pdf.set_font('Helvetica', 'B', 16)
-    pdf.cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', ln=True, align='C')
+    pdf.multi_cell(0, 10, 'Laporan Hasil Analisis Prestasi Siswa', align='C')
     pdf.set_font('Helvetica', 'I', 10)
-    pdf.cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", ln=True, align='C')
+    pdf.multi_cell(0, 6, f"Tanggal: {datetime.now().strftime('%d %B %Y')}", align='C')
     pdf.ln(5)
 
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Identitas Siswa', ln=True)
+    pdf.multi_cell(0, 8, 'Identitas Siswa')
     pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"), ln=True)
-    pdf.cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"), ln=True)
-    pdf.cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"), ln=True)
+    pdf.multi_cell(0, 6, clean(f"Nama: {siswa.get('Nama', '-')}"))
+    pdf.multi_cell(0, 6, clean(f"NISN: {siswa.get('NISN', '-')}"))
+    pdf.multi_cell(0, 6, clean(f"Kelas: {siswa.get('Kelas', '-')}"))
     pdf.ln(3)
 
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Nilai Akademik', ln=True)
+    pdf.multi_cell(0, 8, 'Nilai Akademik')
     pdf.set_font('Helvetica', '', 11)
-    pdf.cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}", ln=True)
-    pdf.cell(0, 6, clean(f"Kategori: {kat}"), ln=True)
+    pdf.multi_cell(0, 6, f"Nilai Rata-rata: {nilai:.2f}")
+    pdf.multi_cell(0, 6, clean(f"Kategori: {kat}"))
     pdf.ln(3)
 
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Model Analisis', ln=True)
+    pdf.multi_cell(0, 8, 'Model Analisis')
     pdf.set_font('Helvetica', '', 11)
     pdf.multi_cell(0, 6, clean(dag_pilihan))
     pdf.ln(3)
 
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Kontribusi Faktor', ln=True)
+    pdf.multi_cell(0, 8, 'Kontribusi Faktor')
+    
     pdf.set_font('Helvetica', 'B', 10)
-    pdf.cell(90, 7, "Faktor", border=1)
-    pdf.cell(0, 7, "Pengaruh (Poin)", border=1, ln=True)
+    w1 = 90
+    w2 = pdf.w - 15 - 15 - w1
+    pdf.cell(w1, 7, "Faktor", border=1)
+    pdf.cell(w2, 7, "Pengaruh (Poin)", border=1, ln=True)
+    
     pdf.set_font('Helvetica', '', 10)
     for k in kontribusi_list:
-        pdf.cell(90, 6, clean(k["Faktor"]), border=1)
-        pdf.cell(0, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
+        pdf.cell(w1, 6, clean(k["Faktor"]), border=1)
+        pdf.cell(w2, 6, f"{k['Pengaruh (Poin)']:+.2f}", border=1, ln=True)
     pdf.ln(5)
 
     pdf.set_font('Helvetica', 'B', 12)
-    pdf.cell(0, 8, 'Kesimpulan & Rekomendasi', ln=True)
+    pdf.multi_cell(0, 8, 'Kesimpulan & Rekomendasi')
     pdf.set_font('Helvetica', '', 10)
     narasi = _generate_narasi_laporan(siswa, nilai, kat, dag_pilihan, kontribusi_list)
     for line in narasi.split("\n"):
         pdf.multi_cell(0, 6, clean(line))
 
-    try:
-        out = pdf.output()
-    except Exception:
-        out = pdf.output(dest='S')
-    if isinstance(out, str):
-        out = out.encode('latin-1')
-    return io.BytesIO(bytes(out))
+    return io.BytesIO(bytes(pdf.output()))
 
 # ================================================================
 # PAGE CONFIG & CSS
@@ -669,7 +687,7 @@ elif st.session_state.current_page == "list_survei":
             if st.button("Berikutnya ➡️", disabled=(st.session_state.page_survei == total_pages), use_container_width=True): st.session_state.page_survei += 1; st.rerun()
 
 # ================================================================
-# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL)
+# HALAMAN: DAFTAR NILAI (PAGINATION + RINCIAN MAPEL DINAMIS)
 # ================================================================
 elif st.session_state.current_page == "list_nilai":
     st.title("Data Nilai Raport Siswa")
@@ -686,6 +704,7 @@ elif st.session_state.current_page == "list_nilai":
         if st.session_state.page_nilai < 1: st.session_state.page_nilai = 1
 
         df_page = df_siswa.iloc[(st.session_state.page_nilai - 1) * items_per_page : st.session_state.page_nilai * items_per_page]
+        mapel_list = get_mapel_list(df_siswa)
 
         for idx, row in df_page.iterrows():
             c1, c2, c3, c4, c5 = st.columns([1.5, 4, 2, 2, 1])
@@ -699,13 +718,15 @@ elif st.session_state.current_page == "list_nilai":
                     st.session_state.edit_nisn = row['NISN']
                     st.session_state.current_page = "edit_y"; st.rerun()
 
-            ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in MATA_PELAJARAN)
+            # Deteksi apakah ada data mapel
+            ada_mapel = any(f"Nilai_{m}" in row.index and pd.notna(row[f"Nilai_{m}"]) for m in mapel_list) or any(m in row.index and pd.notna(row[m]) for m in mapel_list)
+            
             if ada_mapel:
                 with st.expander("📋 Lihat rincian per mata pelajaran"):
                     cols = st.columns(2)
-                    for i, m in enumerate(MATA_PELAJARAN):
+                    for i, m in enumerate(mapel_list):
                         col = cols[i % 2]
-                        col_name = f"Nilai_{m}"
+                        col_name = f"Nilai_{m}" if f"Nilai_{m}" in row.index else m
                         if col_name in row.index and pd.notna(row[col_name]):
                             col.markdown(f"**{m}**: {safe_float(row[col_name]):.2f}")
             else:
@@ -747,7 +768,7 @@ elif st.session_state.current_page == "edit_x":
         render_kuesioner_siswa(siswa['NISN'], is_preview=True)
 
 # ================================================================
-# HALAMAN: EDIT NILAI (PER MATA PELAJARAN)
+# HALAMAN: EDIT NILAI (PER MATA PELAJARAN DINAMIS)
 # ================================================================
 elif st.session_state.current_page == "edit_y":
     df = pd.DataFrame(st.session_state.database_siswa)
@@ -758,11 +779,13 @@ elif st.session_state.current_page == "edit_y":
         if st.button("⬅️ Kembali ke Daftar Nilai", key="back_edit_y"): st.session_state.current_page = "list_nilai"; st.session_state.last_menu = "Nilai Raport"; st.rerun()
         siswa = df[df['NISN'] == str(st.session_state.edit_nisn)].iloc[0]
 
+        mapel_list = get_mapel_list(df)
+        
         nilai_lama_per_mapel = {}
-        for m in MATA_PELAJARAN:
-            col = f"Nilai_{m}"
-            if col in siswa.index and pd.notna(siswa[col]):
-                nilai_lama_per_mapel[m] = safe_float(siswa[col], 0)
+        for m in mapel_list:
+            col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa.index else m
+            if col_name in siswa.index and pd.notna(siswa[col_name]):
+                nilai_lama_per_mapel[m] = safe_float(siswa[col_name], 0)
 
         nilai_skrg = safe_float(siswa.get('Nilai Akademik', 0))
         default_val = nilai_skrg if nilai_skrg > 0 else 80.0
@@ -772,14 +795,14 @@ elif st.session_state.current_page == "edit_y":
         with st.form("form_nilai_per_mapel"):
             c1, c2 = st.columns(2)
             nilai_per_mapel = {}
-            for i, m in enumerate(MATA_PELAJARAN):
+            for i, m in enumerate(mapel_list):
                 col = c1 if i % 2 == 0 else c2
                 default_m = nilai_lama_per_mapel.get(m, default_val)
                 nilai_per_mapel[m] = col.number_input(
                     m, min_value=0.0, max_value=100.0, value=default_m, step=0.1, key=f"nilai_m_{m}"
                 )
 
-            rata = sum(nilai_per_mapel.values()) / len(nilai_per_mapel)
+            rata = sum(nilai_per_mapel.values()) / len(nilai_per_mapel) if nilai_per_mapel else 0.0
             kat, warna = kategori_nilai(rata)
             st.markdown(f"""<div style="background:#f0fdfa; border-left:4px solid {warna}; padding:1rem; border-radius:6px; margin-top:1rem;">
                 <b>Rata-rata Nilai:</b> <span style="font-size:1.5rem; font-weight:700; color:{warna};">{rata:.2f}</span>
@@ -789,6 +812,7 @@ elif st.session_state.current_page == "edit_y":
             if st.form_submit_button("Simpan Nilai", type="primary"):
                 payload = {"Nilai": rata}
                 for m, v in nilai_per_mapel.items():
+                    # Simpan dengan prefix "Nilai_" agar konsisten, atau simpan nama aslinya
                     payload[f"Nilai_{m}"] = v
                 sukses, pesan = update_nilai_siswa(siswa['NISN'], payload)
                 if sukses:
@@ -816,14 +840,16 @@ elif st.session_state.current_page == "rangkuman":
 
             st.markdown(f"### {siswa['Nama']} | Nilai: **{nilai:.2f}** ({kat})")
 
-            ada_mapel = any(f"Nilai_{m}" in siswa.index and pd.notna(siswa[f"Nilai_{m}"]) for m in MATA_PELAJARAN)
+            mapel_list = get_mapel_list(df)
+            ada_mapel = any(f"Nilai_{m}" in siswa.index and pd.notna(siswa[f"Nilai_{m}"]) for m in mapel_list) or any(m in siswa.index and pd.notna(siswa[m]) for m in mapel_list)
+            
             if ada_mapel:
                 with st.expander("📋 Rincian Nilai per Mata Pelajaran", expanded=False):
                     mapel_data = []
-                    for m in MATA_PELAJARAN:
-                        col = f"Nilai_{m}"
-                        if col in siswa.index and pd.notna(siswa[col]):
-                            mapel_data.append({"Mata Pelajaran": m, "Nilai": safe_float(siswa[col])})
+                    for m in mapel_list:
+                        col_name = f"Nilai_{m}" if f"Nilai_{m}" in siswa.index else m
+                        if col_name in siswa.index and pd.notna(siswa[col_name]):
+                            mapel_data.append({"Mata Pelajaran": m, "Nilai": safe_float(siswa[col_name])})
                     if mapel_data:
                         st.dataframe(pd.DataFrame(mapel_data), use_container_width=True, hide_index=True)
 
@@ -855,6 +881,11 @@ elif st.session_state.current_page == "rangkuman":
             st.markdown("### 📥 Unduh Laporan")
             st.caption("Unduh laporan dalam format Word (.docx) atau PDF untuk dokumentasi.")
 
+            # Format Nama File: Laporan (Nama, NISN)
+            safe_nama = clean_filename(siswa.get('Nama', 'Siswa'))
+            safe_nisn = clean_filename(siswa.get('NISN', ''))
+            base_filename = f"Laporan ({safe_nama}, {safe_nisn})"
+
             col_w, col_p = st.columns(2)
             with col_w:
                 if HAS_DOCX:
@@ -863,7 +894,7 @@ elif st.session_state.current_page == "rangkuman":
                         st.download_button(
                             "📄 Unduh Word (.docx)",
                             data=buf_w,
-                            file_name=f"Laporan_{siswa.get('NISN', 'siswa')}_{datetime.now().strftime('%Y%m%d')}.docx",
+                            file_name=f"{base_filename}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             use_container_width=True,
                             key="dl_word_rangkuman"
@@ -880,7 +911,7 @@ elif st.session_state.current_page == "rangkuman":
                         st.download_button(
                             "📄 Unduh PDF",
                             data=buf_p,
-                            file_name=f"Laporan_{siswa.get('NISN', 'siswa')}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                            file_name=f"{base_filename}.pdf",
                             mime="application/pdf",
                             use_container_width=True,
                             key="dl_pdf_rangkuman"
